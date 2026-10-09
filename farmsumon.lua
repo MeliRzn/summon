@@ -4,9 +4,6 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 
 local LP = Players.LocalPlayer
 local Golpear = ReplicatedStorage:WaitForChild("Golpear")
@@ -242,14 +239,6 @@ end
 -- INTERFACE OBSIDIAN: controles conectados à lógica existente
 -- ============================================================
 
-local function obterListaBioma(bioma)
-    local lista = {}
-    for _, criatura in ipairs(bioma.monstros) do
-        table.insert(lista, { id = criatura.id, nome = criatura.nome })
-    end
-    return lista
-end
-
 local function mapaBiomas()
     local valores = {}
     for _, bioma in ipairs(Biomas) do
@@ -353,7 +342,7 @@ FarmBiomeToggle = FarmBox:AddToggle("DexFarmAtivo", {
     end,
 })
 
-local MovementSpeedToggle = MovementBox:AddToggle("DexFarmBoost", {
+MovementBox:AddToggle("DexFarmBoost", {
     Text = "Boost de velocidade",
     Default = S.walkBoost,
     Callback = function(v)
@@ -497,7 +486,7 @@ PortalBox:AddButton({
             setStatus("Destino inválido", C.red)
             return
         end
-        if selecionarBioma then selecionarBioma(destino) end
+        if selecionarBioma then selecionarBioma(destino, true) end
         S.torreFarmAtivo = false
         S.torreAtivo = false
         S.farmBiomaAtivo = true
@@ -590,7 +579,7 @@ atualizarEstadoFarm = function()
     end
 end
 
-selecionarBioma = function(bioma)
+selecionarBioma = function(bioma, suprimirViagem)
     local biomaAnterior = S.biomaId
     S.biomaId = bioma.id
 
@@ -634,7 +623,7 @@ selecionarBioma = function(bioma)
         CreatureInfo:SetText("Alvo atual: " .. S.monstroNome)
     end
 
-    if S.farmBiomaAtivo and biomaAnterior ~= bioma.id then
+    if S.farmBiomaAtivo and biomaAnterior ~= bioma.id and not suprimirViagem then
         S.movimentoToken = S.movimentoToken + 1
         local ch = LP.Character
         local hum = ch and ch:FindFirstChildOfClass("Humanoid")
