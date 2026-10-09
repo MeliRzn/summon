@@ -653,6 +653,14 @@ local iniciarPortalArea
 
 local function atualizarEstadoFarm()
     S.ativo = S.farmBiomaAtivo or S.torreFarmAtivo
+
+    -- Ao desligar os dois modos de farm, restaura a velocidade padrão imediatamente.
+    if not S.ativo then
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = walkOriginal end
+    end
+
     if FarmBiomeBtn then
         FarmBiomeBtn.Text = S.farmBiomaAtivo and "■  DESATIVAR FARM DO BIOMA" or "▶  ATIVAR FARM DO BIOMA"
         FarmBiomeBtn.TextColor3 = S.farmBiomaAtivo and C.red or C.green
