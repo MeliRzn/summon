@@ -1077,7 +1077,8 @@ local function ajustarAlturaConteudo()
     alturaConteudo = alturaDesejada
     if not min then
         TweenService:Create(Main, TweenInfo.new(0.16, Enum.EasingStyle.Quart), {
-            Size = UDim2.fromOffset(W, alturaConteudo)
+            Size = UDim2.fromOffset(W, alturaConteudo),
+            Position = UDim2.new(0.5, -W / 2, 0.5, -alturaConteudo / 2)
         }):Play()
     end
 end
@@ -1088,8 +1089,10 @@ task.defer(ajustarAlturaConteudo)
 MinBtn.Activated:Connect(function()
     min = not min
     Scroll.Visible = not min
+    local novaAltura = min and 54 or alturaConteudo
     TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-        Size = UDim2.fromOffset(W, min and 54 or alturaConteudo)
+        Size = UDim2.fromOffset(W, novaAltura),
+        Position = UDim2.new(0.5, -W / 2, 0.5, -novaAltura / 2)
     }):Play()
     MinBtn.Text = min and "+" or "−"
 end)
