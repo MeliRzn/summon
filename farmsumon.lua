@@ -1206,31 +1206,39 @@ local function estaNaTorre()
     return LP:GetAttribute("NaTorre") == true
 end
 
--- Procura o prompt específico da torre, incluindo Attachment como pai.
+-- Procura a entrada da Torre em todo o mapa, não apenas num raio de 30 studs.
+-- Escolhe o prompt "Torre" mais próximo para poder caminhar até ele desde longe.
 local function acharPromptTorre()
     local ch = getChar()
     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
     local mp = hrp.Position
+    local melhorPrompt, melhorPos, menorDist = nil, nil, math.huge
 
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") and obj.Name == "Torre" and obj.Enabled then
             local parent = obj.Parent
             local pos
-            if parent and parent:IsA("BasePart") then
+            if parent and parent:IsA("Attachment") then
+                pos = parent.WorldPosition
+            elseif parent and parent:IsA("BasePart") then
                 pos = parent.Position
             elseif parent and parent:IsA("Model") then
                 local ok, pivot = pcall(function() return parent:GetPivot().Position end)
                 if ok then pos = pivot end
-            elseif parent and parent:IsA("Attachment") then
-                pos = parent.WorldPosition
             end
-            if pos and (pos - mp).Magnitude < 30 then
-                return obj, pos
+            if pos then
+                local dist = (pos - mp).Magnitude
+                if dist < menorDist then
+                    menorDist = dist
+                    melhorPrompt = obj
+                    melhorPos = pos
+                end
             end
         end
     end
-    return nil
+
+    return melhorPrompt, melhorPos, menorDist
 end
 
 local function acharMonstroTorre()
@@ -1314,17 +1322,26 @@ task.spawn(function()
         else
             -- Aba Torre selecionada: tenta o protocolo do servidor, sem fallback para Slime.
             if S.torreAutoEntrar then
-                local prompt, pos = acharPromptTorre()
+                local prompt, pos, distanciaTorre = acharPromptTorre()
                 if prompt and pos then
                     local ch = getChar()
                     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-                    if hrp and (pos - hrp.Position).Magnitude > 10 then
-                        setStatus("Caminhe até a entrada da Torre", C.orange)
-                        SLab4.Text = "Entrada localizada · aproxime-se"
+                    if hrp and distanciaTorre and distanciaTorre > 10 then
+                        setStatus("Indo até a Torre Infinita...", C.orange)
+                        SLab4.Text = "Entrada localizada · " .. math.floor(distanciaTorre) .. " studs"
+                        -- Anda em trechos curtos e recalcula a rota até chegar.
                         andarAte(pos, 4)
+                        task.wait(0.15)
+                        continue
                     end
+                else
+                    setStatus("Procurando a entrada da Torre...", C.orange)
+                    SLab4.Text = "Não encontrei o marcador de entrada no mapa"
+                    task.wait(1)
+                    continue
                 end
-                setStatus("Solicitando entrada na Torre...", C.purple)
+
+                setStatus("Chegou à Torre · solicitando entrada...", C.purple)
                 SLab4.Text = "Abrir → Entrar · aguardando confirmação"
                 pcall(function() TorreEvento:FireServer("Abrir") end)
                 task.wait(0.45)
