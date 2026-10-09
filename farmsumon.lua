@@ -99,6 +99,7 @@ DropGui.Name = "DexFarmDrop"
 DropGui.ResetOnSpawn = false
 DropGui.IgnoreGuiInset = true
 DropGui.DisplayOrder = 9999
+DropGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 DropGui.Parent = LP:WaitForChild("PlayerGui")
 
 local function corner(p, r)
@@ -114,9 +115,11 @@ end
 -- ============================================================
 local camera = workspace.CurrentCamera
 local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
--- Janela proporcional à tela: compacta no celular e confortável no desktop.
-local W = math.floor(math.clamp(viewport.X * 0.90, 280, 440))
-local H = math.floor(math.clamp(viewport.Y * 0.78, 320, 560))
+-- Layout compacto, especialmente para telas de celular.
+local isMobile = UserInputService.TouchEnabled or viewport.X <= 600
+local W = math.floor(math.clamp(viewport.X * (isMobile and 0.84 or 0.72), isMobile and 248 or 320, isMobile and 360 or 440))
+local alturaMaxima = math.max(280, math.min(isMobile and 420 or 560, viewport.Y - 36))
+local H = math.floor(math.clamp(viewport.Y * (isMobile and 0.58 or 0.72), math.min(300, alturaMaxima), alturaMaxima))
 
 local Main = Instance.new("Frame")
 Main.Size = UDim2.fromOffset(W, H)
@@ -125,12 +128,12 @@ Main.BackgroundColor3 = C.bg
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Parent = GUI
-corner(Main, 18)
-stroke(Main, C.stroke, 1)
+corner(Main, 20)
+stroke(Main, Color3.fromRGB(45, 63, 99), 1)
 
 -- Header
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 54)
+Header.Size = UDim2.new(1, 0, 0, isMobile and 48 or 54)
 Header.BackgroundColor3 = C.card
 Header.BorderSizePixel = 0
 Header.Parent = Main
@@ -152,8 +155,8 @@ HFix.BorderSizePixel = 0
 HFix.Parent = Header
 
 local Icon = Instance.new("TextLabel")
-Icon.Size = UDim2.fromOffset(28, 28)
-Icon.Position = UDim2.fromOffset(16, 13)
+Icon.Size = UDim2.fromOffset(26, 26)
+Icon.Position = UDim2.fromOffset(13, isMobile and 10 or 13)
 Icon.BackgroundTransparency = 1
 Icon.Text = "✦"
 Icon.TextColor3 = C.blue
@@ -163,18 +166,18 @@ Icon.Parent = Header
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -120, 0, 20)
-Title.Position = UDim2.fromOffset(50, 11)
+Title.Position = UDim2.fromOffset(44, isMobile and 7 or 11)
 Title.BackgroundTransparency = 1
 Title.Text = "DEX FARM"
 Title.TextColor3 = C.text
-Title.TextSize = 16
+Title.TextSize = isMobile and 14 or 16
 Title.Font = FB
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
 local Sub = Instance.new("TextLabel")
 Sub.Size = UDim2.new(1, -120, 0, 14)
-Sub.Position = UDim2.fromOffset(50, 30)
+Sub.Position = UDim2.fromOffset(44, isMobile and 26 or 30)
 Sub.BackgroundTransparency = 1
 Sub.Text = "v5.5 · farm por área + Torre"
 Sub.TextColor3 = C.dim
@@ -184,8 +187,8 @@ Sub.TextXAlignment = Enum.TextXAlignment.Left
 Sub.Parent = Header
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.fromOffset(30, 30)
-MinBtn.Position = UDim2.new(1, -76, 0, 12)
+MinBtn.Size = UDim2.fromOffset(isMobile and 27 or 30, isMobile and 27 or 30)
+MinBtn.Position = UDim2.new(1, isMobile and -68 or -76, 0, isMobile and 10 or 12)
 MinBtn.BackgroundColor3 = C.card2
 MinBtn.Text = "—"
 MinBtn.TextColor3 = C.text
@@ -196,8 +199,8 @@ MinBtn.Parent = Header
 corner(MinBtn, 15)
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.fromOffset(30, 30)
-CloseBtn.Position = UDim2.new(1, -42, 0, 12)
+CloseBtn.Size = UDim2.fromOffset(isMobile and 27 or 30, isMobile and 27 or 30)
+CloseBtn.Position = UDim2.new(1, isMobile and -36 or -42, 0, isMobile and 10 or 12)
 CloseBtn.BackgroundColor3 = C.red
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.new(1,1,1)
@@ -211,11 +214,11 @@ corner(CloseBtn, 15)
 -- SCROLL — Fix #1: AutomaticCanvasSize (sem scroll infinito)
 -- ============================================================
 local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -20, 1, -74)
-Scroll.Position = UDim2.fromOffset(10, 64)
+Scroll.Size = UDim2.new(1, -16, 1, -(isMobile and 62 or 74))
+Scroll.Position = UDim2.fromOffset(8, isMobile and 56 or 64)
 Scroll.BackgroundTransparency = 1
 Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 3
+Scroll.ScrollBarThickness = isMobile and 2 or 3
 Scroll.ScrollBarImageColor3 = C.stroke
 Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)  -- ← deixa o Automatic calcular
@@ -223,32 +226,33 @@ Scroll.ScrollBarImageTransparency = 0.3
 Scroll.Parent = Main
 
 local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, 12)
+Layout.Padding = UDim.new(0, isMobile and 7 or 12)
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 Layout.Parent = Scroll
 
 local Pad = Instance.new("UIPadding")
-Pad.PaddingTop = UDim.new(0, 4)
-Pad.PaddingBottom = UDim.new(0, 20)
-Pad.PaddingRight = UDim.new(0, 6)
+Pad.PaddingTop = UDim.new(0, 3)
+Pad.PaddingBottom = UDim.new(0, isMobile and 10 or 20)
+Pad.PaddingRight = UDim.new(0, 4)
 Pad.Parent = Scroll
 
 -- ============================================================
 -- COMPONENTES
 -- ============================================================
 local function secao(titulo, altura)
+    local alturaSecao = isMobile and (titulo == "Farm / Biomas" and 238 or altura) or altura
     local Holder = Instance.new("Frame")
-    Holder.Size = UDim2.new(1, -8, 0, altura + 38)
+    Holder.Size = UDim2.new(1, -8, 0, alturaSecao + 38)
     Holder.BackgroundTransparency = 1
     Holder.Parent = Scroll
 
     local Head = Instance.new("TextButton")
-    Head.Size = UDim2.new(1, 0, 0, 32)
+    Head.Size = UDim2.new(1, 0, 0, isMobile and 30 or 32)
     Head.BackgroundColor3 = C.card2
     Head.BorderSizePixel = 0
     Head.Text = "  " .. titulo
     Head.TextColor3 = C.text
-    Head.TextSize = 13
+    Head.TextSize = isMobile and 12 or 13
     Head.Font = FB
     Head.TextXAlignment = Enum.TextXAlignment.Left
     Head.AutoButtonColor = false
@@ -266,7 +270,7 @@ local function secao(titulo, altura)
     Arrow.Parent = Head
 
     local Box = Instance.new("Frame")
-    Box.Size = UDim2.new(1, 0, 0, altura)
+    Box.Size = UDim2.new(1, 0, 0, alturaSecao)
     Box.Position = UDim2.fromOffset(0, 38)
     Box.BackgroundColor3 = C.card
     Box.BorderSizePixel = 0
@@ -284,12 +288,15 @@ local function secao(titulo, altura)
     BP.PaddingBottom = UDim.new(0, 6)
     BP.Parent = Box
 
-    local expanded = true
-    Head.MouseButton1Click:Connect(function()
+    local expanded = not isMobile or titulo == "Farm / Biomas"
+    Box.Visible = expanded
+    Holder.Size = UDim2.new(1, -8, 0, expanded and (alturaSecao + 38) or 32)
+    Arrow.Text = expanded and "⌄" or "›"
+    Head.Activated:Connect(function()
         expanded = not expanded
         Box.Visible = expanded
-        Holder.Size = UDim2.new(1, -8, 0, expanded and (altura + 38) or 32)
-        Arrow.Text = expanded and "v" or ">"
+        Holder.Size = UDim2.new(1, -8, 0, expanded and (alturaSecao + 38) or 32)
+        Arrow.Text = expanded and "⌄" or "›"
     end)
     return Box
 end
@@ -334,7 +341,7 @@ local function toggle(parent, texto, default, cb)
     Click.Parent = R
 
     local est = default
-    Click.MouseButton1Click:Connect(function()
+    Click.Activated:Connect(function()
         est = not est
         TweenService:Create(Track, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
             BackgroundColor3 = est and C.green or Color3.fromRGB(80, 80, 90)
@@ -429,124 +436,138 @@ end
 -- ============================================================
 local function dropdown(parent, texto, opcoes, defaultNome, cb)
     local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 44)
+    R.Size = UDim2.new(1, 0, 0, 42)
     R.BackgroundTransparency = 1
     R.Parent = parent
 
-    local larguraBotao = math.clamp((parent.AbsoluteSize.X > 0 and parent.AbsoluteSize.X or 280) * 0.56, 122, 170)
-
+    local larguraBotao = math.clamp((parent.AbsoluteSize.X > 0 and parent.AbsoluteSize.X or 260) * 0.58, 118, 166)
     local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -larguraBotao - 28, 1, 0)
-    L.Position = UDim2.fromOffset(14, 0)
+    L.Size = UDim2.new(1, -larguraBotao - 26, 1, 0)
+    L.Position = UDim2.fromOffset(12, 0)
     L.BackgroundTransparency = 1
     L.Text = texto
     L.TextColor3 = C.text
-    L.TextSize = 13
+    L.TextSize = 12
     L.Font = FM
     L.TextXAlignment = Enum.TextXAlignment.Left
     L.Parent = R
 
     local Btn = Instance.new("TextButton")
     Btn.Size = UDim2.fromOffset(larguraBotao, 32)
-    Btn.Position = UDim2.new(1, -larguraBotao - 10, 0.5, -16)
-    Btn.BackgroundColor3 = C.card2
-    Btn.Text = defaultNome
-    Btn.TextColor3 = C.blue
-    Btn.TextSize = 12
+    Btn.Position = UDim2.new(1, -larguraBotao - 8, 0.5, -16)
+    Btn.BackgroundColor3 = Color3.fromRGB(29, 43, 70)
+    Btn.Text = tostring(defaultNome or "Selecionar") .. "  ▾"
+    Btn.TextColor3 = C.text
+    Btn.TextSize = 11
     Btn.Font = FB
     Btn.AutoButtonColor = false
     Btn.TextTruncate = Enum.TextTruncate.AtEnd
+    Btn.Active = true
+    Btn.ZIndex = 2
     Btn.Parent = R
-    corner(Btn, 8)
-    stroke(Btn, C.stroke, 1)
+    corner(Btn, 10)
+    stroke(Btn, C.blue, 1)
 
-    local overlay = nil
-    local lista = nil
+    local popupLayer
     local aberto = false
-
     local function fechar()
-        if lista then lista:Destroy(); lista = nil end
-        if overlay then overlay:Destroy(); overlay = nil end
+        if popupLayer then popupLayer:Destroy(); popupLayer = nil end
         aberto = false
     end
 
-    Btn.Activated:Connect(function()
+    local function abrir()
         if aberto then fechar(); return end
+        if not DropGui or not DropGui.Parent or #opcoes == 0 then return end
         aberto = true
 
-        -- Overlay fica atrás da lista; Activated funciona com toque e mouse.
-        overlay = Instance.new("TextButton")
-        overlay.Size = UDim2.fromScale(1, 1)
-        overlay.BackgroundTransparency = 1
-        overlay.Text = ""
-        overlay.ZIndex = 1
-        overlay.Active = true
-        overlay.Parent = DropGui
-        overlay.Activated:Connect(fechar)
+        -- O botão de fechar e a lista ficam em camadas separadas. O overlay
+        -- não é pai da lista, portanto não pode roubar o toque da opção.
+        popupLayer = Instance.new("Frame")
+        popupLayer.Name = "CreaturePickerLayer"
+        popupLayer.Size = UDim2.fromScale(1, 1)
+        popupLayer.BackgroundTransparency = 1
+        popupLayer.ZIndex = 10
+        popupLayer.Parent = DropGui
+
+        local outside = Instance.new("TextButton")
+        outside.Name = "Dismiss"
+        outside.Size = UDim2.fromScale(1, 1)
+        outside.BackgroundTransparency = 1
+        outside.Text = ""
+        outside.AutoButtonColor = false
+        outside.Active = true
+        outside.ZIndex = 10
+        outside.Parent = popupLayer
+        outside.Activated:Connect(fechar)
 
         local cam = workspace.CurrentCamera
-        local tela = cam and cam.ViewportSize or Vector2.new(360, 640)
-        local larguraLista = math.min(math.max(Btn.AbsoluteSize.X + 18, 150), tela.X - 20)
-        local altura = math.min(#opcoes * 40 + 8, math.floor(tela.Y * 0.42), 280)
-        local x = math.clamp(Btn.AbsolutePosition.X + Btn.AbsoluteSize.X - larguraLista, 10, tela.X - larguraLista - 10)
-        local y = Btn.AbsolutePosition.Y + Btn.AbsoluteSize.Y + 6
-        if y + altura > tela.Y - 8 then
-            y = math.max(8, Btn.AbsolutePosition.Y - altura - 6)
-        end
+        local screen = cam and cam.ViewportSize or Vector2.new(360, 640)
+        local width = math.min(math.max(Btn.AbsoluteSize.X + 20, 160), screen.X - 16)
+        local rowHeight = 36
+        local height = math.min(#opcoes * rowHeight + 8, math.floor(screen.Y * 0.40), 260)
+        local x = math.clamp(Btn.AbsolutePosition.X + Btn.AbsoluteSize.X - width, 8, screen.X - width - 8)
+        local y = Btn.AbsolutePosition.Y + Btn.AbsoluteSize.Y + 5
+        if y + height > screen.Y - 8 then y = math.max(8, Btn.AbsolutePosition.Y - height - 5) end
 
-        lista = Instance.new("ScrollingFrame")
-        lista.Size = UDim2.fromOffset(larguraLista, altura)
-        lista.Position = UDim2.fromOffset(x, y)
-        lista.BackgroundColor3 = C.card2
-        lista.BorderSizePixel = 0
-        lista.ScrollBarThickness = 4
-        lista.ScrollBarImageColor3 = C.blue
-        lista.ScrollingEnabled = true
-        lista.Active = true
-        lista.ZIndex = 2
-        lista.CanvasSize = UDim2.new(0, 0, 0, #opcoes * 40 + 8)
-        lista.Parent = overlay
-        corner(lista, 12)
-        stroke(lista, C.blue, 1.5)
+        local popup = Instance.new("Frame")
+        popup.Name = "CreaturePicker"
+        popup.Size = UDim2.fromOffset(width, height)
+        popup.Position = UDim2.fromOffset(x, y)
+        popup.BackgroundColor3 = Color3.fromRGB(20, 29, 49)
+        popup.BorderSizePixel = 0
+        popup.ZIndex = 20
+        popup.Parent = popupLayer
+        corner(popup, 14)
+        stroke(popup, C.blue, 1.25)
 
-        local LL = Instance.new("UIListLayout")
-        LL.Padding = UDim.new(0, 0)
-        LL.SortOrder = Enum.SortOrder.LayoutOrder
-        LL.Parent = lista
+        local list = Instance.new("ScrollingFrame")
+        list.Size = UDim2.new(1, -8, 1, -8)
+        list.Position = UDim2.fromOffset(4, 4)
+        list.BackgroundTransparency = 1
+        list.BorderSizePixel = 0
+        list.ScrollBarThickness = 3
+        list.ScrollBarImageColor3 = C.blue
+        list.ScrollingEnabled = true
+        list.Active = true
+        list.ZIndex = 21
+        list.CanvasSize = UDim2.fromOffset(0, #opcoes * rowHeight)
+        list.Parent = popup
+
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 1)
+        layout.Parent = list
 
         for i, op in ipairs(opcoes) do
-            local B = Instance.new("TextButton")
-            B.Size = UDim2.new(1, -4, 0, 40)
-            B.BackgroundTransparency = 1
-            B.Text = "  " .. op.nome
-            B.TextColor3 = C.text
-            B.TextSize = 13
-            B.Font = F
-            B.TextXAlignment = Enum.TextXAlignment.Left
-            B.AutoButtonColor = false
-            B.LayoutOrder = i
-            B.ZIndex = 3
-            B.Parent = lista
-
-            B.Active = true
-            B.Selectable = true
-            B.MouseEnter:Connect(function()
-                B.BackgroundTransparency = 0
-                B.BackgroundColor3 = C.blue
-            end)
-            B.MouseLeave:Connect(function()
-                B.BackgroundTransparency = 1
-            end)
-            B.Activated:Connect(function()
-                Btn.Text = op.nome
+            local option = Instance.new("TextButton")
+            option.Name = "CreatureOption"
+            option.Size = UDim2.new(1, -2, 0, rowHeight)
+            option.BackgroundColor3 = (op.id == S.monstroId) and Color3.fromRGB(37, 77, 132) or Color3.fromRGB(20, 29, 49)
+            option.BackgroundTransparency = (op.id == S.monstroId) and 0 or 1
+            option.BorderSizePixel = 0
+            option.Text = "   " .. tostring(op.nome)
+            option.TextColor3 = C.text
+            option.TextSize = 12
+            option.Font = (op.id == S.monstroId) and FB or F
+            option.TextXAlignment = Enum.TextXAlignment.Left
+            option.AutoButtonColor = false
+            option.Active = true
+            option.Selectable = true
+            option.LayoutOrder = i
+            option.ZIndex = 22
+            option.Parent = list
+            corner(option, 8)
+            option.Activated:Connect(function()
+                Btn.Text = tostring(op.nome) .. "  ▾"
+                S.monstroId = op.id
+                S.monstroNome = op.nome
                 if cb then cb(op.id, op.nome) end
                 fechar()
             end)
         end
-    end)
+    end
 
-    -- O overlay fecha ao tocar fora. Não cria conexões em loop, que antes
-    -- podiam fechar a lista antes de o toque selecionar a criatura.
+    Btn.Activated:Connect(abrir)
 end
 
 local function botao(parent, texto, cor, cb)
@@ -763,7 +784,7 @@ for i, bioma in ipairs(Biomas) do
     Tab.Parent = AreaTabs
     corner(Tab, 8)
     stroke(Tab, C.stroke, 1)
-    Tab.MouseButton1Click:Connect(function()
+    Tab.Activated:Connect(function()
         for _, sibling in ipairs(AreaTabs:GetChildren()) do
             if sibling:IsA("TextButton") then sibling.BackgroundColor3 = sibling == Tab and C.blue or C.card2 end
         end
@@ -1052,7 +1073,7 @@ local alturaConteudo = H
 
 local function ajustarAlturaConteudo()
     -- O painel acompanha o conteúdo: recolher seções também remove o espaço vazio.
-    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + 82, 230, H)
+    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + (isMobile and 68 or 82), isMobile and 270 or 230, H)
     alturaConteudo = alturaDesejada
     if not min then
         TweenService:Create(Main, TweenInfo.new(0.16, Enum.EasingStyle.Quart), {
@@ -1064,7 +1085,7 @@ end
 Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(ajustarAlturaConteudo)
 task.defer(ajustarAlturaConteudo)
 
-MinBtn.MouseButton1Click:Connect(function()
+MinBtn.Activated:Connect(function()
     min = not min
     Scroll.Visible = not min
     TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
@@ -1073,7 +1094,7 @@ MinBtn.MouseButton1Click:Connect(function()
     MinBtn.Text = min and "+" or "−"
 end)
 
-CloseBtn.MouseButton1Click:Connect(function()
+CloseBtn.Activated:Connect(function()
     S.ativo = false
     S.farmBiomaAtivo = false
     S.torreFarmAtivo = false
