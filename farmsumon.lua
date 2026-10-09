@@ -26,6 +26,7 @@ local C = {
     red     = Color3.fromRGB(255, 69, 58),
     orange  = Color3.fromRGB(255, 159, 10),
     gold    = Color3.fromRGB(255, 214, 90),
+    purple  = Color3.fromRGB(175, 82, 222),
 }
 local F  = Enum.Font.Gotham
 local FB = Enum.Font.GothamBold
@@ -46,6 +47,13 @@ local S = {
     abates = 0,
     coletados = 0,
     alvoAtual = "nenhum",
+    -- Torre Infinita
+    torreAtivo = false,
+    torreAutoEntrar = true,
+    torreAutoAdvance = true,
+    torreAutoReviver = true,
+    torreUltimoClique = 0,
+    torreAndar = 0,
 }
 local walkOriginal = 16
 
@@ -570,6 +578,12 @@ local BoxColeta = secao("Coleta", 92)
 toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
 slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
 
+-- Torre Infinita (altura suficiente para os três controles)
+local BoxTorre = secao("Torre Infinita", 138)
+toggle(BoxTorre, "Auto Entrar", S.torreAutoEntrar, function(v) S.torreAutoEntrar = v end)
+toggle(BoxTorre, "Auto Avançar Andar", S.torreAutoAdvance, function(v) S.torreAutoAdvance = v end)
+toggle(BoxTorre, "Auto Reviver", S.torreAutoReviver, function(v) S.torreAutoReviver = v end)
+
 -- Status
 local StatusBox = Instance.new("Frame")
 StatusBox.Size = UDim2.new(1, -8, 0, 86)
@@ -671,6 +685,7 @@ end)
 
 CloseBtn.MouseButton1Click:Connect(function()
     S.ativo = false
+    S.torreAtivo = false
     local ch = LP.Character
     if ch then
         local h = ch:FindFirstChildOfClass("Humanoid")
@@ -816,6 +831,12 @@ spawn(function()
     while GUI.Parent do
         task.wait(0.05)
         if not S.ativo then alvoAtual = nil; S.alvoAtual = "nenhum"; continue end
+        -- No modo Torre, o loop de farm comum não pode disputar movimento/alvo.
+        if S.torreAtivo then
+            alvoAtual = nil
+            task.wait(0.15)
+            continue
+        end
         local ch = getChar()
         if not ch then setStatus("Sem personagem", C.orange); task.wait(0.5); continue end
 
@@ -894,15 +915,28 @@ spawn(function()
     end
 end)
 
+-- Declarada antes do callback e preenchida pelo sistema da torre abaixo.
+local detectarModoTorre
+
 StartBtn.MouseButton1Click:Connect(function()
     S.ativo = not S.ativo
     if S.ativo then
         StartBtn.Text = "■  PARAR FARM"
         StartBtn.TextColor3 = C.red
         SDot.BackgroundColor3 = C.green
-        setStatus("Iniciando...", C.green)
-        S.abates = 0; S.coletados = 0
+        S.abates = 0
+        S.coletados = 0
+        S.torreAndar = 0
+        S.torreUltimoClique = 0
         alvoAtual = nil
+        S.torreAtivo = detectarModoTorre and detectarModoTorre() or false
+        if S.torreAtivo then
+            setStatus("Modo Torre ativado", C.purple)
+            SLab4.Text = "Procurando entrada da torre..."
+        else
+            setStatus("Farm aberto iniciado", C.green)
+            SLab4.Text = ""
+        end
         local ch = LP.Character
         if ch then
             local h = ch:FindFirstChildOfClass("Humanoid")
@@ -914,6 +948,7 @@ StartBtn.MouseButton1Click:Connect(function()
         SDot.BackgroundColor3 = C.red
         setStatus("Inativo", C.text)
         SLab4.Text = ""
+        S.torreAtivo = false
         local ch = LP.Character
         if ch then
             local h = ch:FindFirstChildOfClass("Humanoid")
@@ -928,4 +963,247 @@ LP.CharacterAdded:Connect(function(ch)
     if h and S.ativo and S.walkBoost then h.WalkSpeed = S.walkSpeed end
 end)
 
-print("[DexFarm v5.1] Carregado!")
+-- ============================================================
+-- SISTEMA DE TORRE INFINITA
+-- ============================================================
+local VIM = game:GetService("VirtualInputManager")
+
+local function clicarBotao(btn)
+    if not btn or not btn.Parent or not btn.Visible then return false end
+    local ativou = pcall(function() btn:Activate() end)
+    if ativou then return true end
+    local ok = pcall(function()
+        local pos = btn.AbsolutePosition + btn.AbsoluteSize / 2
+        VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+        task.wait(0.03)
+        VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+    end)
+    return ok
+end
+
+local function textoDoBotao(obj)
+    if obj:IsA("TextButton") then return (obj.Text or ""):lower() end
+    return ""
+end
+
+local function acharBotao(textoAlvo, evitar)
+    local playerGui = LP:WaitForChild("PlayerGui")
+    for _, gui in ipairs(playerGui:GetChildren()) do
+        if not gui:IsA("ScreenGui") then continue end
+        if gui.Name == "DexFarm" or gui.Name == "DexFarmDrop" then continue end
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible then
+                local txt = textoDoBotao(obj)
+                if txt:find(textoAlvo:lower(), 1, true) then
+                    if evitar and txt:find(evitar:lower(), 1, true) then continue end
+                    return obj
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function telaAndarLimpo()
+    local playerGui = LP:WaitForChild("PlayerGui")
+    for _, gui in ipairs(playerGui:GetChildren()) do
+        if not gui:IsA("ScreenGui") or gui.Name == "DexFarm" or gui.Name == "DexFarmDrop" then continue end
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if obj:IsA("TextLabel") and obj.Visible then
+                local txt = (obj.Text or ""):lower()
+                if txt:find("andar", 1, true) and
+                   (txt:find("limpo", 1, true) or txt:find("completo", 1, true)) then return true end
+            end
+        end
+    end
+    return false
+end
+
+local function menuTorreAberto()
+    local playerGui = LP:WaitForChild("PlayerGui")
+    for _, gui in ipairs(playerGui:GetChildren()) do
+        if not gui:IsA("ScreenGui") or gui.Name == "DexFarm" or gui.Name == "DexFarmDrop" then continue end
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and obj.Visible then
+                local txt = (obj.Text or ""):lower()
+                if txt:find("entrar na torre", 1, true) or txt:find("torre infinita", 1, true) then return true end
+            end
+        end
+    end
+    return false
+end
+
+local function posicaoDoPrompt(prompt)
+    local pai = prompt.Parent
+    while pai and pai ~= workspace do
+        if pai:IsA("BasePart") then return pai.Position end
+        if pai:IsA("Model") then
+            local ok, piv = pcall(function() return pai:GetPivot().Position end)
+            if ok then return piv end
+        end
+        pai = pai.Parent
+    end
+    return nil
+end
+
+local function promptTorrePerto(limite)
+    local ch = getChar()
+    if not ch then return false end
+    local mp = ch.HumanoidRootPart.Position
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local pos = posicaoDoPrompt(obj)
+            if pos and (pos - mp).Magnitude < limite then
+                local pai = obj.Parent
+                local nome = pai and (pai.Name or ""):lower() or ""
+                local action = (obj.ActionText or ""):lower()
+                local objText = (obj.ObjectText or ""):lower()
+                if nome:find("torre", 1, true) or action:find("entrar", 1, true)
+                    or objText:find("torre", 1, true) or action:find("torre", 1, true) then return true end
+            end
+        end
+    end
+    return false
+end
+
+detectarModoTorre = function()
+    return menuTorreAberto() or promptTorrePerto(30)
+end
+
+local function tentarEntrarTorre()
+    local ch = getChar()
+    if not ch then return false end
+    local mp = ch.HumanoidRootPart.Position
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            local pos = posicaoDoPrompt(obj)
+            if pos and (pos - mp).Magnitude < 25 then
+                local pai = obj.Parent
+                local nome = pai and (pai.Name or ""):lower() or ""
+                local action = (obj.ActionText or ""):lower()
+                local objText = (obj.ObjectText or ""):lower()
+                if nome:find("torre", 1, true) or action:find("entrar", 1, true)
+                    or objText:find("torre", 1, true) or action:find("torre", 1, true) then
+                    if fireproximityprompt then
+                        local ok = pcall(function() fireproximityprompt(obj) end)
+                        if ok then return true end
+                    end
+                    local ok = pcall(function()
+                        obj:InputHoldBegin()
+                        task.wait(math.max(obj.HoldDuration, 0.1) + 0.05)
+                        obj:InputHoldEnd()
+                    end)
+                    if ok then return true end
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function acharMonstroTorre()
+    local ch = getChar()
+    if not ch then return nil end
+    local mp = ch.HumanoidRootPart.Position
+    local pasta = workspace:FindFirstChild("Monstros")
+    if not pasta then return nil end
+    local melhor, mdist = nil, math.huge
+    for _, m in ipairs(pasta:GetChildren()) do
+        if m ~= ch then
+            local h = m:FindFirstChildOfClass("Humanoid")
+            local hrp = m:FindFirstChild("HumanoidRootPart")
+            if h and h.Health > 0 and hrp then
+                local d = (hrp.Position - mp).Magnitude
+                if d < mdist and d < 200 then mdist, melhor = d, m end
+            end
+        end
+    end
+    return melhor, mdist
+end
+
+local ultimaBuscaTorre = 0
+spawn(function()
+    while GUI.Parent do
+        task.wait(0.15)
+        if not S.torreAtivo or not S.ativo then continue end
+        local agora = os.clock()
+        local ch = getChar()
+        if not ch then
+            setStatus("Torre: aguardando personagem...", C.orange)
+            continue
+        end
+
+        if agora - S.torreUltimoClique >= 0.6 and S.torreAutoReviver then
+            local btn = acharBotao("reviver")
+            if btn then
+                clicarBotao(btn)
+                S.torreUltimoClique = agora
+                setStatus("Revivendo...", C.orange)
+                task.wait(0.6)
+                continue
+            end
+        end
+
+        if agora - S.torreUltimoClique >= 0.6 and S.torreAutoAdvance and telaAndarLimpo() then
+            local btn = acharBotao("continuar", "sair")
+                or acharBotao("próximo", "sair")
+                or acharBotao("proximo", "sair")
+            if btn then
+                clicarBotao(btn)
+                S.torreUltimoClique = agora
+                S.torreAndar = S.torreAndar + 1
+                setStatus("Andar " .. S.torreAndar .. " limpo!", C.gold)
+                task.wait(0.8)
+                continue
+            end
+        end
+
+        if agora - S.torreUltimoClique >= 0.6 and S.torreAutoEntrar and menuTorreAberto() then
+            local btn = acharBotao("entrar na torre", "sair") or acharBotao("entrar", "sair")
+            if btn then
+                clicarBotao(btn)
+                S.torreUltimoClique = agora
+                if S.torreAndar < 1 then S.torreAndar = 1 end
+                setStatus("Entrando na torre...", C.purple)
+                task.wait(1.2)
+                continue
+            end
+        end
+
+        local alvo = acharMonstroTorre()
+        if alvo then
+            local hrp = alvo:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local mp = ch.HumanoidRootPart.Position
+                local ap = hrp.Position
+                local d = (ap - mp).Magnitude
+                setStatus("Torre A" .. S.torreAndar .. ": " .. alvo.Name, C.green)
+                S.alvoAtual = "[Torre] " .. alvo.Name
+                SLab4.Text = "Andar " .. S.torreAndar .. " · " .. alvo.Name
+                if d > S.distancia + 1 then
+                    local offset = mp - ap
+                    if offset.Magnitude > 0.1 then offset = offset.Unit end
+                    andarAte(ap + offset * S.distancia, 4)
+                else
+                    local hum = ch:FindFirstChildOfClass("Humanoid")
+                    if hum then hum:MoveTo(mp) end
+                    local arma = getArma()
+                    local cd = math.max((arma and arma.Cooldown) or 0.6, 0.5) + 0.05
+                    if S.autoAtaque and os.clock() - ultimoAtaque >= cd then
+                        atacar(alvo)
+                        ultimoAtaque = os.clock()
+                    end
+                end
+            end
+        else
+            if S.torreAutoEntrar and os.clock() - ultimaBuscaTorre >= 1 then
+                ultimaBuscaTorre = os.clock()
+                tentarEntrarTorre()
+            end
+            setStatus("Torre: aguardando...", C.purple)
+            SLab4.Text = "Andar " .. S.torreAndar
+        end
+    end
+end)
+
+print("[DexFarm v5.2] Carregado!")
