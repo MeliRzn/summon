@@ -48,6 +48,10 @@ local S = {
     abates = 0,
     coletados = 0,
     alvoAtual = "nenhum",
+    -- Portais de área
+    portalAreaAtual = "Hub",
+    portalAutoViajar = true,
+    portalEmCurso = false,
     -- Torre via remote TorreEvento
     torreAtivo = false,
     torreAutoEntrar = true,
@@ -627,6 +631,7 @@ MonsterHost.Parent = BoxFarm
 
 local FarmBiomeBtn, TowerFarmBtn, SLab4
 local setStatus
+local iniciarPortalArea
 
 local function atualizarEstadoFarm()
     S.ativo = S.farmBiomaAtivo or S.torreFarmAtivo
@@ -710,6 +715,7 @@ selecionarBioma(Biomas[1])
 FarmBiomeBtn = botao(BoxFarm, "▶  ATIVAR FARM DO BIOMA", C.green, function()
     if S.farmBiomaAtivo then
         S.farmBiomaAtivo = false
+        S.portalEmCurso = false
         atualizarEstadoFarm()
         setStatus("Farm do bioma desativado", C.dim)
         return
@@ -722,7 +728,16 @@ FarmBiomeBtn = botao(BoxFarm, "▶  ATIVAR FARM DO BIOMA", C.green, function()
     S.torreAtivo = false
     S.farmBiomaAtivo = true
     atualizarEstadoFarm()
-    setStatus("Farm do bioma: " .. tostring(S.biomaId), C.green)
+    if S.biomaId ~= "Hub" then
+        if iniciarPortalArea then
+            iniciarPortalArea(S.biomaId, false)
+        else
+            setStatus("Preparando portal...", C.blue)
+        end
+    else
+        S.portalEmCurso = false
+        setStatus("Farm do bioma: " .. tostring(S.biomaId), C.green)
+    end
 end)
 slider(BoxFarm, "Distância", 3, 12, S.distancia, function(v) S.distancia = v end)
 local BoxMov = secao("Movimento", 108)
@@ -752,6 +767,44 @@ toggle(BoxCombate, "Travar Mira", S.travarMira, function(v) S.travarMira = v end
 local BoxColeta = secao("Coleta", 108)
 toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
 slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
+
+-- Portais: viajar manualmente ou iniciar a viagem ao ativar o farm da área.
+local BoxPortal = secao("Viajar para Área", 150)
+local areasList = {}
+for _, area in ipairs(Biomas) do
+    if area.id ~= "Torre" then
+        table.insert(areasList, { id = area.id, nome = area.nome })
+    end
+end
+dropdown(BoxPortal, "Destino", areasList, Biomas[1].nome, function(id)
+    S.portalAreaAtual = id
+end)
+botao(BoxPortal, "VIAJAR AGORA", C.blue, function()
+    local destino
+    for _, area in ipairs(Biomas) do
+        if area.id == S.portalAreaAtual and area.id ~= "Torre" then
+            destino = area
+            break
+        end
+    end
+    if not destino then
+        setStatus("Destino inválido", C.red)
+        return
+    end
+    selecionarBioma(destino)
+    S.torreFarmAtivo = false
+    S.torreAtivo = false
+    S.farmBiomaAtivo = true
+    atualizarEstadoFarm()
+    if iniciarPortalArea then
+        iniciarPortalArea(destino.id, true)
+    else
+        setStatus("Preparando sistema de portais...", C.blue)
+    end
+end)
+toggle(BoxPortal, "Auto Entrar no Portal", S.portalAutoViajar, function(v)
+    S.portalAutoViajar = v
+end)
 
 -- Torre Infinita (altura suficiente para os três controles)
 local BoxTorre = secao("Torre Infinita", 200)
@@ -964,6 +1017,226 @@ local function andarAte(destino, timeout)
     return false
 end
 
+-- ============================================================
+-- SISTEMA DE PORTAIS DE ÁREA
+-- ============================================================
+local PortalEvento = ReplicatedStorage:WaitForChild("PortalEvento", 5)
+local CollectionService = game:GetService("CollectionService")
+local portalAtual = nil
+local portalExpira = 0
+local portalAvisouChegou = false
+local portalAguardandoDesde = 0
+
+local function localizarPortalDoJogador()
+    for _, obj in ipairs(CollectionService:GetTagged("PortalArea")) do
+        if obj and obj.Parent and obj:GetAttribute("Dono") == LP.UserId then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function obterEntradaPortal(portal)
+    if not portal then return nil, nil end
+    local prompt
+    for _, obj in ipairs(portal:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and (obj.Name == "Entrada" or not prompt) then
+            prompt = obj
+            if obj.Name == "Entrada" then break end
+        end
+    end
+    if not prompt then return nil, nil end
+
+    local parent = prompt.Parent
+    local pos
+    if parent and parent:IsA("Attachment") then
+        pos = parent.WorldPosition
+    elseif parent and parent:IsA("BasePart") then
+        pos = parent.Position
+    elseif parent and parent:IsA("Model") then
+        local ok, pivot = pcall(function() return parent:GetPivot().Position end)
+        if ok then pos = pivot end
+    end
+    if not pos and portal:IsA("Model") then
+        local ok, pivot = pcall(function() return portal:GetPivot().Position end)
+        if ok then pos = pivot end
+    elseif not pos and portal:IsA("BasePart") then
+        pos = portal.Position
+    end
+    return prompt, pos
+end
+
+local function ativarEntradaPortal(prompt)
+    if not prompt or not prompt.Parent then return false end
+    if type(fireproximityprompt) == "function" then
+        local ok = pcall(function()
+            fireproximityprompt(prompt, math.max(prompt.HoldDuration, 0.5))
+        end)
+        if ok then return true end
+    end
+    local ok = pcall(function()
+        prompt:InputHoldBegin()
+        task.wait(math.max(prompt.HoldDuration, 0.5) + 0.1)
+        prompt:InputHoldEnd()
+    end)
+    return ok
+end
+
+iniciarPortalArea = function(areaId, forcar)
+    if not S.farmBiomaAtivo then
+        S.portalEmCurso = false
+        return false
+    end
+    if areaId == "Torre" then
+        S.portalEmCurso = false
+        return false
+    end
+    if areaId == "Hub" then
+        S.portalEmCurso = false
+        setStatus("Farm do Hub iniciado", C.green)
+        SLab4.Text = ""
+        return true
+    end
+    if not PortalEvento or not PortalEvento:IsA("RemoteEvent") then
+        S.portalEmCurso = false
+        setStatus("Erro: PortalEvento indisponível", C.red)
+        SLab4.Text = "Não foi possível solicitar o portal"
+        return false
+    end
+    if LP:GetAttribute("Liberada_" .. areaId) == false then
+        S.portalEmCurso = false
+        S.farmBiomaAtivo = false
+        atualizarEstadoFarm()
+        setStatus("Área bloqueada: " .. tostring(areaId), C.red)
+        SLab4.Text = "Desbloqueie a área antes de viajar"
+        return false
+    end
+
+    S.portalEmCurso = true
+    S.portalAreaAtual = areaId
+    portalAtual = nil
+    portalExpira = 0
+    portalAvisouChegou = false
+    portalAguardandoDesde = 0
+    setStatus("Solicitando portal para " .. tostring(areaId) .. "...", C.blue)
+    SLab4.Text = "Aguardando o portal aparecer"
+    local ok = pcall(function()
+        PortalEvento:FireServer("Abrir", areaId)
+    end)
+    if not ok then
+        S.portalEmCurso = false
+        setStatus("Falha ao solicitar portal", C.red)
+        return false
+    end
+    return true
+end
+
+if PortalEvento and PortalEvento:IsA("RemoteEvent") then
+    PortalEvento.OnClientEvent:Connect(function(acao, areaId)
+        if acao == "Aberto" then
+            task.delay(0.25, function()
+                local encontrado = localizarPortalDoJogador()
+                if encontrado then
+                    portalAtual = encontrado
+                    portalExpira = encontrado:GetAttribute("ExpiraEm") or (workspace:GetServerTimeNow() + 30)
+                end
+            end)
+            setStatus("Portal aberto: " .. tostring(areaId), C.blue)
+        elseif acao == "Viajar" then
+            setStatus("Entrando na área " .. tostring(areaId or S.biomaId) .. "...", C.blue)
+        elseif acao == "Chegou" then
+            if not areaId or areaId == S.biomaId or areaId == S.portalAreaAtual then
+                S.portalEmCurso = false
+                portalAtual = nil
+                portalAguardandoDesde = 0
+                setStatus("Chegou em " .. tostring(areaId or S.biomaId), C.green)
+                SLab4.Text = "Farm iniciado em " .. tostring(areaId or S.biomaId)
+            end
+        elseif acao == "Erro" then
+            S.portalEmCurso = false
+            portalAtual = nil
+            setStatus("Erro no portal: " .. tostring(areaId), C.red)
+            SLab4.Text = "Verifique se a área está liberada"
+        end
+    end)
+end
+
+task.spawn(function()
+    while GUI.Parent do
+        task.wait(0.2)
+        if not S.portalEmCurso or not S.farmBiomaAtivo or S.torreFarmAtivo then
+            continue
+        end
+        if S.biomaId ~= S.portalAreaAtual then
+            S.portalEmCurso = false
+            portalAtual = nil
+            continue
+        end
+        if not S.portalAutoViajar then
+            setStatus("Portal aberto · entrada automática pausada", C.orange)
+            SLab4.Text = "Ative Auto Entrar no Portal para continuar"
+            continue
+        end
+
+        if not portalAtual or not portalAtual.Parent then
+            portalAtual = localizarPortalDoJogador()
+            if portalAtual then
+                portalExpira = portalAtual:GetAttribute("ExpiraEm") or (workspace:GetServerTimeNow() + 30)
+            else
+                if portalAguardandoDesde == 0 then portalAguardandoDesde = os.clock() end
+                if os.clock() - portalAguardandoDesde > 28 then
+                    S.portalEmCurso = false
+                    setStatus("Portal não encontrado", C.red)
+                    SLab4.Text = "Tente ativar o farm novamente"
+                else
+                    setStatus("Aguardando portal de " .. tostring(S.biomaId), C.blue)
+                    SLab4.Text = "O portal pode levar alguns instantes para aparecer"
+                end
+                continue
+            end
+        end
+
+        if portalExpira > 0 and portalExpira - workspace:GetServerTimeNow() <= 0 then
+            portalAtual = nil
+            portalAguardandoDesde = 0
+            setStatus("Portal expirou; solicitando outro...", C.orange)
+            pcall(function() PortalEvento:FireServer("Abrir", S.biomaId) end)
+            continue
+        end
+
+        local prompt, pos = obterEntradaPortal(portalAtual)
+        local ch = getChar()
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not prompt or not pos or not hrp then
+            task.wait(0.2)
+            continue
+        end
+
+        local distanciaPortal = (hrp.Position - pos).Magnitude
+        if distanciaPortal > math.max(prompt.MaxActivationDistance - 1, 5) then
+            setStatus("Indo até o portal...", C.blue)
+            SLab4.Text = "Destino: " .. tostring(S.biomaId) .. " · " .. math.floor(distanciaPortal) .. " studs"
+            andarAte(Vector3.new(pos.X, hrp.Position.Y, pos.Z), 4)
+            continue
+        end
+
+        setStatus("Entrando no portal...", C.blue)
+        SLab4.Text = "Ativando Entrada · " .. tostring(S.biomaId)
+        if not portalAvisouChegou then
+            portalAvisouChegou = true
+            pcall(function() PortalEvento:FireServer("Chegou", S.biomaId) end)
+        end
+        ativarEntradaPortal(prompt)
+        if portalAguardandoDesde == 0 then portalAguardandoDesde = os.clock() end
+        if os.clock() - portalAguardandoDesde > 10 then
+            S.portalEmCurso = false
+            setStatus("Entrada não confirmada", C.red)
+            SLab4.Text = "O servidor não confirmou a viagem"
+        end
+        task.wait(0.8)
+    end
+end)
+
 local function atacar(alvo)
     local ch = getChar()
     if not ch or not alvo then return end
@@ -1041,6 +1314,12 @@ spawn(function()
     while GUI.Parent do
         task.wait(0.05)
         if not S.farmBiomaAtivo then alvoAtual = nil; S.alvoAtual = "nenhum"; continue end
+        if S.portalEmCurso then
+            alvoAtual = nil
+            S.alvoAtual = "viajando para " .. tostring(S.biomaId)
+            task.wait(0.12)
+            continue
+        end
         -- No modo Torre, o loop de farm comum não pode disputar movimento/alvo.
         if S.torreFarmAtivo or S.biomaId == "Torre" then
             alvoAtual = nil
