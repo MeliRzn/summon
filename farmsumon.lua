@@ -53,6 +53,10 @@ local S = {
     autoLimpar = true,
     autoVenderAte = true,
     autoEvoluir = false,
+    autoCraftMelhores = true,
+    ultimoPedidoCraft = 0,
+    craftPlanejamentoPendente = false,
+    craftEmCurso = false,
     intervaloInv = 45,
     raridadeVender = 2,
     ultimoInv = 0,
@@ -785,11 +789,12 @@ slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioCol
 -- ============================================================
 -- SEÇÃO: INVENTÁRIO
 -- ============================================================
-local BoxInv = secao("Inventário", 280)
+local BoxInv = secao("Inventário", 322)
 toggle(BoxInv, "Auto Equipar Melhores", S.autoEquipar, function(v) S.autoEquipar = v end)
 toggle(BoxInv, "Auto Limpar Repetidos", S.autoLimpar, function(v) S.autoLimpar = v end)
 toggle(BoxInv, "Auto Vender Ruins", S.autoVenderAte, function(v) S.autoVenderAte = v end)
 toggle(BoxInv, "Auto Evoluir Iguais", S.autoEvoluir, function(v) S.autoEvoluir = v end)
+toggle(BoxInv, "Auto Craftar Só Melhorias", S.autoCraftMelhores, function(v) S.autoCraftMelhores = v end)
 slider(BoxInv, "Intervalo (s)", 15, 180, S.intervaloInv, function(v) S.intervaloInv = math.floor(v + 0.5) end)
 dropdown(BoxInv, "Vender até", {
     { id = 1, nome = "Só Básicos" },
@@ -1825,6 +1830,7 @@ end)
 local InventarioAcao = ReplicatedStorage:WaitForChild("InventarioAcao", 5)
 local InventarioAtualizar = ReplicatedStorage:WaitForChild("InventarioAtualizar", 5)
 local VendaEvento = ReplicatedStorage:WaitForChild("VendaEvento", 5)
+local CraftingEvento = ReplicatedStorage:WaitForChild("CraftingEvento", 5)
 local DadosItens
 do
     local ok, dados = pcall(function()
@@ -1863,6 +1869,56 @@ if VendaEvento and VendaEvento:IsA("RemoteEvent") then
         if typeof(moedas) == "number" and moedas > 0 then
             S.moedasVendidas = S.moedasVendidas + moedas
             S.itensVendidos = S.itensVendidos + (typeof(quantidade) == "number" and math.max(0, math.floor(quantidade)) or 1)
+        end
+    end)
+end
+
+-- Craft automático: só confirma o craft se o servidor planejar itens e ganho de poder positivo.
+if CraftingEvento and CraftingEvento:IsA("RemoteEvent") then
+    CraftingEvento.OnClientEvent:Connect(function(acao, dados, mensagem)
+        if acao == "PlanoMelhores" then
+            S.craftPlanejamentoPendente = false
+            if not S.craftEmCurso then return end
+
+            local itens = typeof(dados) == "table" and dados.Itens or nil
+            local ganho = typeof(dados) == "table" and tonumber(dados.Ganho) or nil
+            local quantidade = 0
+            if typeof(itens) == "table" then
+                for _, item in ipairs(itens) do
+                    if item ~= nil then quantidade = quantidade + 1 end
+                end
+            end
+
+            if S.autoCraftMelhores and quantidade > 0 and ganho and ganho > 0 then
+                SLab4.Text = "Craft de melhorias: +" .. tostring(ganho) .. " de poder"
+                local ok, err = pcall(function()
+                    CraftingEvento:FireServer("CraftarMelhores")
+                end)
+                if not ok then
+                    S.craftEmCurso = false
+                    SLab4.Text = "Falha ao solicitar craft"
+                    warn("[DexFarm] Falha no craft: " .. tostring(err))
+                else
+                    task.delay(20, function()
+                        if S.craftEmCurso then
+                            S.craftEmCurso = false
+                            SLab4.Text = "Craft: resposta do servidor não recebida"
+                        end
+                    end)
+                end
+            else
+                S.craftEmCurso = false
+                if S.autoCraftMelhores then
+                    SLab4.Text = "Craft ignorado: nenhuma melhoria de poder"
+                end
+            end
+        elseif acao == "ResultadoMelhores" then
+            S.craftEmCurso = false
+            if dados == true then
+                SLab4.Text = "Craft de melhorias concluído"
+            elseif mensagem then
+                SLab4.Text = "Craft: " .. tostring(mensagem)
+            end
         end
     end)
 end
@@ -2001,6 +2057,34 @@ task.spawn(function()
             end
             setStatus("Farmando...", C.green)
             SLab4.Text = ""
+
+            -- Planeja no fim do ciclo para não competir com limpeza/venda/equipamento.
+            local agoraCraft = os.clock()
+            if S.autoCraftMelhores
+                and CraftingEvento
+                and CraftingEvento:IsA("RemoteEvent")
+                and not S.craftEmCurso
+                and not S.craftPlanejamentoPendente
+                and (S.ultimoPedidoCraft == 0 or agoraCraft - S.ultimoPedidoCraft >= 60) then
+                S.craftEmCurso = true
+                S.craftPlanejamentoPendente = true
+                S.ultimoPedidoCraft = agoraCraft
+                local okCraft, errCraft = pcall(function()
+                    CraftingEvento:FireServer("PlanejarMelhores")
+                end)
+                if not okCraft then
+                    S.craftPlanejamentoPendente = false
+                    S.craftEmCurso = false
+                    warn("[DexFarm] Falha ao planejar craft: " .. tostring(errCraft))
+                else
+                    task.delay(15, function()
+                        if S.craftPlanejamentoPendente then
+                            S.craftPlanejamentoPendente = false
+                            S.craftEmCurso = false
+                        end
+                    end)
+                end
+            end
         end)
         if not okCiclo then
             warn("[DexFarm] Erro no ciclo de inventário: " .. tostring(errCiclo))
@@ -2019,4 +2103,4 @@ task.spawn(function()
     end
 end)
 
-print("[DexFarm v5.7] Carregado!")
+print("[DexFarm v5.8] Carregado!")
