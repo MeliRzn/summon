@@ -140,7 +140,7 @@ local Sub = Instance.new("TextLabel")
 Sub.Size = UDim2.new(1, -120, 0, 14)
 Sub.Position = UDim2.fromOffset(50, 30)
 Sub.BackgroundTransparency = 1
-Sub.Text = "v5.1 · farm + coleta"
+Sub.Text = "v5.4 · biomas + farm"
 Sub.TextColor3 = C.dim
 Sub.TextSize = 10
 Sub.Font = F
@@ -202,26 +202,27 @@ Pad.Parent = Scroll
 -- ============================================================
 local function secao(titulo, altura)
     local Holder = Instance.new("Frame")
-    Holder.Size = UDim2.new(1, -8, 0, altura + 22)
+    Holder.Size = UDim2.new(1, -8, 0, altura + 38)
     Holder.BackgroundTransparency = 1
     Holder.Parent = Scroll
 
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, 0, 0, 16)
-    Label.BackgroundTransparency = 1
-    Label.Text = titulo:upper()
-    Label.TextColor3 = C.dim
-    Label.TextSize = 11
-    Label.Font = FB
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Holder
-    local lp = Instance.new("UIPadding")
-    lp.PaddingLeft = UDim.new(0, 8)
-    lp.Parent = Label
+    local Head = Instance.new("TextButton")
+    Head.Size = UDim2.new(1, 0, 0, 32)
+    Head.BackgroundColor3 = C.card2
+    Head.BorderSizePixel = 0
+    Head.Text = "  " .. titulo .. "                                      −"
+    Head.TextColor3 = C.text
+    Head.TextSize = 13
+    Head.Font = FB
+    Head.TextXAlignment = Enum.TextXAlignment.Left
+    Head.AutoButtonColor = false
+    Head.Parent = Holder
+    corner(Head, 9)
+    stroke(Head, C.stroke, 1)
 
     local Box = Instance.new("Frame")
     Box.Size = UDim2.new(1, 0, 0, altura)
-    Box.Position = UDim2.fromOffset(0, 22)
+    Box.Position = UDim2.fromOffset(0, 38)
     Box.BackgroundColor3 = C.card
     Box.BorderSizePixel = 0
     Box.Parent = Holder
@@ -238,6 +239,13 @@ local function secao(titulo, altura)
     BP.PaddingBottom = UDim.new(0, 6)
     BP.Parent = Box
 
+    local expanded = true
+    Head.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        Box.Visible = expanded
+        Holder.Size = UDim2.new(1, -8, 0, expanded and (altura + 38) or 32)
+        Head.Text = "  " .. titulo .. (expanded and "                                      −" or "                                      +")
+    end)
     return Box
 end
 
@@ -528,28 +536,146 @@ local function botao(parent, texto, cor, cb)
 end
 
 -- ============================================================
--- LISTA DE MONSTROS
+-- BIOMAS E CRIATURAS: cada monstro fica somente na sua área.
 -- ============================================================
-local monstrosList = {}
-for id, d in pairs(DadosMonstros) do
-    if type(d) == "table" and d.Nome then
-        table.insert(monstrosList, { id = id, nome = d.Nome })
+local Biomas = {
+    { id="Hub", nome="Hub · Clareira do Pylon", nivel="Nv. 1+", monstros={{id="Slime",nome="Slime Musgoso"},{id="Lobo",nome="Lobo Glacial"}} },
+    { id="Deserto", nome="Deserto · Dunas Escaldantes", nivel="Nv. 8+", monstros={{id="Guardiao",nome="Guardião do Deserto"},{id="GuardiaoChefe",nome="Guardião Carmesim (chefe)"}} },
+    { id="Floresta", nome="Floresta · Floresta Encantada", nivel="Nv. 14+", monstros={{id="Espreitador",nome="Espreitador de Espinhos"},{id="AnciaoRaiz",nome="Ancião Raiz Corrompido (chefe)"}} },
+    { id="Picos", nome="Picos · Picos Congelados", nivel="Nv. 20+", monstros={{id="Lanceiro",nome="Lanceiro Congelado"},{id="RainhaTormenta",nome="Rainha da Tormenta (chefe)"}} },
+    { id="Vulcao", nome="Vulcão · Vulcão Sinan", nivel="Nv. 26+", monstros={{id="Reptil",nome="Réptil Vulcânico"},{id="Colosso",nome="Colosso Acorrentado (chefe)"}} },
+    { id="Abismo", nome="Abismo · Abismo Oceânico", nivel="Nv. 32+", monstros={{id="Enguia",nome="Enguia Voltaica Abissal"},{id="Leviata",nome="Leviatã das Profundezas (chefe)"}} },
+    { id="Fabrica", nome="Fábrica · Complexo Mecânico", nivel="Nv. 38+", monstros={{id="Sentinela",nome="Sentinela Autômata"},{id="Predador",nome="Terror Industrial (chefe)"}} },
+    { id="Eclipse", nome="Eclipse · Terras do Eclipse", nivel="Nv. 46+", monstros={{id="Cavaleiro",nome="Cavaleiro Profanado"},{id="Espadachim",nome="Espadachim do Eclipse (chefe final)"}} },
+    { id="Cume", nome="Cume · Cume dos Ventos", nivel="Nv. 52+", monstros={{id="DragaoCeleste",nome="Dragão Serpentino Celestial"},{id="Garugon",nome="Garugon (chefe dragão demônio)"}} },
+    { id="Catacumbas", nome="Catacumbas · Catacumbas Abissais", nivel="Nv. 56+", monstros={{id="AranhaCristal",nome="Aranha Cristalina"},{id="RainhaTeias",nome="Rainha das Teias (chefe aracne)"}} },
+    { id="Pantano", nome="Pântano · Pântano Febril", nivel="Nv. 60+", monstros={{id="LouvaDeusPestilento",nome="Louva-deus Pestilento"},{id="HidraFebril",nome="Hidra Febril (chefe de três cabeças)"}} },
+    { id="Cidadela", nome="Cidadela · Cidadela do Vazio", nivel="Nv. 64+", monstros={{id="EspectroVazio",nome="Espectro do Vazio"},{id="SoberanoVazio",nome="Soberano Vazio (chefe)"}} },
+    { id="Selva", nome="Selva · Selva de Jade", nivel="Nv. 68+", monstros={{id="OncaJade",nome="Onça de Jade"},{id="ImperadorSimio",nome="Imperador Símio (chefe)"}} },
+    { id="Biblioteca", nome="Biblioteca · Biblioteca Arcana", nivel="Nv. 72+", monstros={{id="GrimorioVivo",nome="Grimório Vivo"},{id="Arquimago",nome="Arquimago Esquecido (chefe)"}} },
+    { id="Sakura", nome="Sakura · Santuário Sakura", nivel="Nv. 76+", monstros={{id="Kitsune",nome="Kitsune Espiritual"},{id="OniRubro",nome="Oni Rubro (chefe)"}} },
+    { id="Circo", nome="Circo · Circo do Crepúsculo", nivel="Nv. 80+", monstros={{id="Marionete",nome="Marionete Sombria"},{id="Arlequim",nome="Arlequim (chefe)"}} },
+    { id="Astral", nome="Astral · Fronteira Astral", nivel="Nv. 84+", monstros={{id="MedusaAstral",nome="Medusa Astral"},{id="TitaEstelar",nome="Titã Estelar (chefe)"}} },
+    { id="Halloween", nome="Halloween · Vale Assombrado", nivel="Evento · Nv. 88+", monstros={{id="EspantalhoMaldito",nome="Espantalho Maldito"},{id="ZumbiCoveiro",nome="Zumbi Coveiro"},{id="CavaleiroSemCabeca",nome="Cavaleiro Sem Cabeça (chefe)"},{id="JackCeifador",nome="Jack, o Ceifador (chefe)"}} },
+    { id="Torre", nome="Torre · Torre Infinita", nivel="Endgame · Nv. 20+", monstros={} },
+}
+
+local function obterListaBioma(bioma)
+    local lista = {}
+    for _, criatura in ipairs(bioma.monstros) do
+        if type(DadosMonstros[criatura.id]) == "table" then
+            table.insert(lista, {id=criatura.id, nome=criatura.nome})
+        end
     end
+    return lista
 end
-table.sort(monstrosList, function(a, b) return a.nome < b.nome end)
 
 -- ============================================================
--- SEÇÕES
+-- SEÇÕES EXPANSÍVEIS + ABAS DE BIOMA
 -- ============================================================
-local BoxFarm = secao("Farm", 150)
-dropdown(BoxFarm, "Monstro", monstrosList, S.monstroNome, function(id, nome)
-    S.monstroId = id
-    S.monstroNome = nome
-end)
+local BoxFarm = secao("Farm", 246)
+local AreaTitle = Instance.new("TextLabel")
+AreaTitle.Size = UDim2.new(1, -20, 0, 18)
+AreaTitle.BackgroundTransparency = 1
+AreaTitle.Text = "BIOMA / ÁREA"
+AreaTitle.TextColor3 = C.dim
+AreaTitle.TextSize = 10
+AreaTitle.Font = FB
+AreaTitle.TextXAlignment = Enum.TextXAlignment.Left
+AreaTitle.Parent = BoxFarm
+
+local AreaInfo = Instance.new("TextLabel")
+AreaInfo.Size = UDim2.new(1, -20, 0, 18)
+AreaInfo.BackgroundTransparency = 1
+AreaInfo.Text = "Selecione a área para listar apenas suas criaturas."
+AreaInfo.TextColor3 = C.dim
+AreaInfo.TextSize = 10
+AreaInfo.Font = F
+AreaInfo.TextXAlignment = Enum.TextXAlignment.Left
+AreaInfo.Parent = BoxFarm
+
+local AreaTabs = Instance.new("ScrollingFrame")
+AreaTabs.Size = UDim2.new(1, -16, 0, 38)
+AreaTabs.BackgroundTransparency = 1
+AreaTabs.BorderSizePixel = 0
+AreaTabs.ScrollBarThickness = 2
+AreaTabs.ScrollBarImageColor3 = C.blue
+AreaTabs.ScrollingDirection = Enum.ScrollingDirection.X
+AreaTabs.CanvasSize = UDim2.new(0, 0, 0, 0)
+AreaTabs.AutomaticCanvasSize = Enum.AutomaticSize.X
+AreaTabs.Parent = BoxFarm
+local AreaTabsLayout = Instance.new("UIListLayout")
+AreaTabsLayout.FillDirection = Enum.FillDirection.Horizontal
+AreaTabsLayout.Padding = UDim.new(0, 6)
+AreaTabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+AreaTabsLayout.Parent = AreaTabs
+
+local MonsterHost = Instance.new("Frame")
+MonsterHost.Size = UDim2.new(1, 0, 0, 44)
+MonsterHost.BackgroundTransparency = 1
+MonsterHost.Parent = BoxFarm
+
+local function selecionarBioma(bioma)
+    S.biomaId = bioma.id
+    AreaInfo.Text = bioma.nome .. "  ·  " .. bioma.nivel
+    for _, child in ipairs(MonsterHost:GetChildren()) do child:Destroy() end
+
+    local lista = obterListaBioma(bioma)
+    if #lista == 0 then
+        local info = Instance.new("TextLabel")
+        info.Size = UDim2.new(1, -16, 1, 0)
+        info.Position = UDim2.fromOffset(8, 0)
+        info.BackgroundTransparency = 1
+        info.Text = bioma.id == "Torre" and "Ondas dinâmicas · usa DadosTorre" or "Nenhuma criatura disponível nos DadosMonstros"
+        info.TextColor3 = C.gold
+        info.TextSize = 11
+        info.Font = FM
+        info.TextXAlignment = Enum.TextXAlignment.Left
+        info.Parent = MonsterHost
+        return
+    end
+
+    local achouSelecionado = false
+    for _, criatura in ipairs(lista) do
+        if criatura.id == S.monstroId then achouSelecionado = true end
+    end
+    if not achouSelecionado then
+        S.monstroId = lista[1].id
+        S.monstroNome = lista[1].nome
+    end
+    dropdown(MonsterHost, "Criatura", lista, S.monstroNome, function(id, nome)
+        S.monstroId = id
+        S.monstroNome = nome
+    end)
+end
+
+for i, bioma in ipairs(Biomas) do
+    local Tab = Instance.new("TextButton")
+    Tab.Size = UDim2.fromOffset(116, 30)
+    Tab.BackgroundColor3 = i == 1 and C.blue or C.card2
+    Tab.BorderSizePixel = 0
+    Tab.Text = bioma.id
+    Tab.TextColor3 = C.text
+    Tab.TextSize = 11
+    Tab.Font = FB
+    Tab.AutoButtonColor = false
+    Tab.LayoutOrder = i
+    Tab.Parent = AreaTabs
+    corner(Tab, 8)
+    stroke(Tab, C.stroke, 1)
+    Tab.MouseButton1Click:Connect(function()
+        for _, sibling in ipairs(AreaTabs:GetChildren()) do
+            if sibling:IsA("TextButton") then sibling.BackgroundColor3 = sibling == Tab and C.blue or C.card2 end
+        end
+        selecionarBioma(bioma)
+    end)
+end
+selecionarBioma(Biomas[1])
+
 slider(BoxFarm, "Distância", 3, 12, S.distancia, function(v) S.distancia = v end)
 toggle(BoxFarm, "Auto Teleporte", S.teleporte, function(v) S.teleporte = v end)
 
-local BoxMov = secao("Movimento", 92)
+local BoxMov = secao("Movimento", 112)
 toggle(BoxMov, "Boost de Velocidade", S.walkBoost, function(v)
     S.walkBoost = v
     local ch = LP.Character
@@ -569,16 +695,16 @@ slider(BoxMov, "WalkSpeed", 16, 250, S.walkSpeed, function(v)
     end
 end)
 
-local BoxCombate = secao("Combate", 92)
+local BoxCombate = secao("Combate", 96)
 toggle(BoxCombate, "Auto Ataque", S.autoAtaque, function(v) S.autoAtaque = v end)
 toggle(BoxCombate, "Travar Mira", S.travarMira, function(v) S.travarMira = v end)
 
-local BoxColeta = secao("Coleta", 92)
+local BoxColeta = secao("Coleta", 112)
 toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
 slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
 
 -- Torre Infinita (altura suficiente para os três controles)
-local BoxTorre = secao("Torre Infinita", 92)
+local BoxTorre = secao("Torre Infinita", 138)
 toggle(BoxTorre, "Auto Entrar", S.torreAutoEntrar, function(v) S.torreAutoEntrar = v end)
 toggle(BoxTorre, "Auto Avançar Andar", S.torreAutoAdvance, function(v) S.torreAutoAdvance = v end)
 toggle(BoxTorre, "Auto Reviver", S.torreAutoReviver, function(v) S.torreAutoReviver = v end)
