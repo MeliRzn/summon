@@ -15,18 +15,18 @@ local DadosArmas = require(ReplicatedStorage:WaitForChild("DadosArmas"))
 local DadosMonstros = require(ReplicatedStorage:WaitForChild("DadosMonstros"))
 
 local C = {
-    bg      = Color3.fromRGB(20, 20, 24),
-    card    = Color3.fromRGB(30, 30, 36),
-    card2   = Color3.fromRGB(42, 42, 50),
-    stroke  = Color3.fromRGB(58, 58, 66),
-    text    = Color3.fromRGB(240, 240, 245),
-    dim     = Color3.fromRGB(142, 142, 152),
-    blue    = Color3.fromRGB(10, 132, 255),
-    green   = Color3.fromRGB(48, 209, 88),
-    red     = Color3.fromRGB(255, 69, 58),
-    orange  = Color3.fromRGB(255, 159, 10),
-    gold    = Color3.fromRGB(255, 214, 90),
-    purple  = Color3.fromRGB(175, 82, 222),
+    bg      = Color3.fromRGB(10, 14, 28),
+    card    = Color3.fromRGB(18, 25, 45),
+    card2   = Color3.fromRGB(29, 40, 69),
+    stroke  = Color3.fromRGB(54, 76, 120),
+    text    = Color3.fromRGB(245, 248, 255),
+    dim     = Color3.fromRGB(155, 173, 207),
+    blue    = Color3.fromRGB(44, 139, 255),
+    green   = Color3.fromRGB(0, 230, 156),
+    red     = Color3.fromRGB(255, 76, 115),
+    orange  = Color3.fromRGB(255, 151, 61),
+    gold    = Color3.fromRGB(255, 216, 82),
+    purple  = Color3.fromRGB(181, 93, 255),
 }
 local F  = Enum.Font.Gotham
 local FB = Enum.Font.GothamBold
@@ -67,6 +67,7 @@ local S = {
     portalAreaAtual = "Hub",
     portalAutoViajar = true,
     portalEmCurso = false,
+    movimentoToken = 0,
     -- Torre via remote TorreEvento
     torreAtivo = false,
     torreAutoEntrar = true,
@@ -113,7 +114,9 @@ end
 -- ============================================================
 local camera = workspace.CurrentCamera
 local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-local W, H = math.max(300, math.min(500, viewport.X - 24)), math.max(380, math.min(650, viewport.Y - 24))
+-- Janela proporcional à tela: compacta no celular e confortável no desktop.
+local W = math.floor(math.clamp(viewport.X * 0.90, 280, 440))
+local H = math.floor(math.clamp(viewport.Y * 0.78, 320, 560))
 
 local Main = Instance.new("Frame")
 Main.Size = UDim2.fromOffset(W, H)
@@ -423,7 +426,7 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
     R.Parent = parent
 
     local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -180, 1, 0)
+    L.Size = UDim2.new(1, -larguraBotao - 28, 1, 0)
     L.Position = UDim2.fromOffset(14, 0)
     L.BackgroundTransparency = 1
     L.Text = texto
@@ -434,8 +437,9 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
     L.Parent = R
 
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.fromOffset(170, 30)
-    Btn.Position = UDim2.new(1, -184, 0.5, -15)
+    local larguraBotao = math.clamp((R.AbsoluteSize.X > 0 and R.AbsoluteSize.X or 280) * 0.56, 122, 170)
+    Btn.Size = UDim2.fromOffset(larguraBotao, 32)
+    Btn.Position = UDim2.new(1, -larguraBotao - 10, 0.5, -16)
     Btn.BackgroundColor3 = C.card2
     Btn.Text = defaultNome
     Btn.TextColor3 = C.blue
@@ -457,33 +461,44 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
         aberto = false
     end
 
-    Btn.MouseButton1Click:Connect(function()
+    Btn.Activated:Connect(function()
         if aberto then fechar(); return end
         aberto = true
 
-        -- Overlay cobre a tela toda (na GUI de cima)
+        -- Overlay fica atrás da lista; Activated funciona com toque e mouse.
         overlay = Instance.new("TextButton")
         overlay.Size = UDim2.fromScale(1, 1)
         overlay.BackgroundTransparency = 1
         overlay.Text = ""
         overlay.ZIndex = 1
+        overlay.Active = true
         overlay.Parent = DropGui
+        overlay.Activated:Connect(fechar)
 
-        -- Lista
-        local altura = math.min(#opcoes * 32 + 12, 260)
+        local cam = workspace.CurrentCamera
+        local tela = cam and cam.ViewportSize or Vector2.new(360, 640)
+        local larguraLista = math.min(math.max(Btn.AbsoluteSize.X + 18, 150), tela.X - 20)
+        local altura = math.min(#opcoes * 40 + 8, math.floor(tela.Y * 0.42), 280)
+        local x = math.clamp(Btn.AbsolutePosition.X + Btn.AbsoluteSize.X - larguraLista, 10, tela.X - larguraLista - 10)
+        local y = Btn.AbsolutePosition.Y + Btn.AbsoluteSize.Y + 6
+        if y + altura > tela.Y - 8 then
+            y = math.max(8, Btn.AbsolutePosition.Y - altura - 6)
+        end
+
         lista = Instance.new("ScrollingFrame")
-        lista.Size = UDim2.fromOffset(180, altura)
-        lista.Position = UDim2.fromOffset(Btn.AbsolutePosition.X - 10, Btn.AbsolutePosition.Y + 32)
+        lista.Size = UDim2.fromOffset(larguraLista, altura)
+        lista.Position = UDim2.fromOffset(x, y)
         lista.BackgroundColor3 = C.card2
         lista.BorderSizePixel = 0
-        lista.ScrollBarThickness = 2
-        lista.ScrollBarImageColor3 = C.stroke
+        lista.ScrollBarThickness = 4
+        lista.ScrollBarImageColor3 = C.blue
+        lista.ScrollingEnabled = true
+        lista.Active = true
         lista.ZIndex = 2
-        -- ✅ Fix: CanvasSize correto pro conteúdo
-        lista.CanvasSize = UDim2.new(0, 0, 0, #opcoes * 32 + 12)
+        lista.CanvasSize = UDim2.new(0, 0, 0, #opcoes * 40 + 8)
         lista.Parent = overlay
-        corner(lista, 10)
-        stroke(lista, C.stroke, 1)
+        corner(lista, 12)
+        stroke(lista, C.blue, 1.5)
 
         local LL = Instance.new("UIListLayout")
         LL.Padding = UDim.new(0, 0)
@@ -492,11 +507,11 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
 
         for i, op in ipairs(opcoes) do
             local B = Instance.new("TextButton")
-            B.Size = UDim2.new(1, 0, 0, 32)
+            B.Size = UDim2.new(1, -4, 0, 40)
             B.BackgroundTransparency = 1
             B.Text = "  " .. op.nome
             B.TextColor3 = C.text
-            B.TextSize = 12
+            B.TextSize = 13
             B.Font = F
             B.TextXAlignment = Enum.TextXAlignment.Left
             B.AutoButtonColor = false
@@ -504,6 +519,8 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
             B.ZIndex = 3
             B.Parent = lista
 
+            B.Active = true
+            B.Selectable = true
             B.MouseEnter:Connect(function()
                 B.BackgroundTransparency = 0
                 B.BackgroundColor3 = C.blue
@@ -511,7 +528,7 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
             B.MouseLeave:Connect(function()
                 B.BackgroundTransparency = 1
             end)
-            B.MouseButton1Click:Connect(function()
+            B.Activated:Connect(function()
                 Btn.Text = op.nome
                 if cb then cb(op.id, op.nome) end
                 fechar()
@@ -519,28 +536,8 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
         end
     end)
 
-    -- Overlay fecha ao clicar fora
-    task.spawn(function()
-        while GUI.Parent do
-            task.wait(0.1)
-            if overlay and overlay.Parent then
-                -- Handler de click-outside via InputBegan
-                local conn
-                conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                    if gameProcessed then return end
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        local pos = input.Position
-                        local absX, absY = lista.AbsolutePosition.X, lista.AbsolutePosition.Y
-                        local absX2, absY2 = absX + lista.AbsoluteSize.X, absY + lista.AbsoluteSize.Y
-                        if not (pos.X >= absX and pos.X <= absX2 and pos.Y >= absY and pos.Y <= absY2) then
-                            fechar()
-                            conn:Disconnect()
-                        end
-                    end
-                end)
-            end
-        end
-    end)
+    -- O overlay fecha ao tocar fora. Não cria conexões em loop, que antes
+    -- podiam fechar a lista antes de o toque selecionar a criatura.
 end
 
 local function botao(parent, texto, cor, cb)
@@ -722,7 +719,17 @@ local function selecionarBioma(bioma)
     -- para a área escolhida. Antes, o loop cancelava o portal antigo, mas não
     -- solicitava um novo, deixando o farm procurando criaturas em outra área.
     if S.farmBiomaAtivo and biomaAnterior ~= bioma.id then
-        S.portalEmCurso = false
+        -- Invalida qualquer MoveTo antigo (combate ou portal) antes de trocar de área.
+        S.movimentoToken = S.movimentoToken + 1
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        local root = ch and ch:FindFirstChild("HumanoidRootPart")
+        if hum and root then hum:MoveTo(root.Position) end
+
+        -- Pausa o combate imediatamente até terminar a nova viagem.
+        S.portalEmCurso = true
+        S.portalAreaAtual = bioma.id
+        S.alvoAtual = "viajando para " .. bioma.id
         task.defer(function()
             if S.farmBiomaAtivo and S.biomaId == bioma.id and iniciarPortalArea then
                 iniciarPortalArea(bioma.id, true)
@@ -1113,13 +1120,20 @@ local function andarAte(destino, timeout)
     if not ch then return false end
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
+    local tokenMovimento = S.movimentoToken
     if S.walkBoost then hum.WalkSpeed = S.walkSpeed end
     hum:MoveTo(destino)
     local t0 = os.clock()
-    local timeout = timeout or 8
-    while os.clock() - t0 < timeout do
+    local limite = timeout or 8
+    while os.clock() - t0 < limite do
         task.wait(0.08)
-        if not S.ativo then return false end
+        if not S.ativo or tokenMovimento ~= S.movimentoToken then
+            local atual = getChar()
+            local atualHum = atual and atual:FindFirstChildOfClass("Humanoid")
+            local atualRoot = atual and atual:FindFirstChild("HumanoidRootPart")
+            if atualHum and atualRoot then atualHum:MoveTo(atualRoot.Position) end
+            return false
+        end
         local c = getChar()
         if not c then return false end
         if (c.HumanoidRootPart.Position - destino).Magnitude < 4 then return true end
@@ -1194,6 +1208,8 @@ local function ativarEntradaPortal(prompt)
 end
 
 iniciarPortalArea = function(areaId, forcar)
+    -- Cada solicitação de portal invalida deslocamentos anteriores.
+    S.movimentoToken = S.movimentoToken + 1
     if not S.farmBiomaAtivo then
         S.portalEmCurso = false
         return false
@@ -1204,6 +1220,7 @@ iniciarPortalArea = function(areaId, forcar)
     end
     if areaId == "Hub" then
         S.portalEmCurso = false
+        S.portalAreaAtual = "Hub"
         setStatus("Farm do Hub iniciado", C.green)
         SLab4.Text = ""
         return true
@@ -1260,7 +1277,7 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
         elseif acao == "Viajar" then
             setStatus("Entrando na área " .. tostring(areaId or S.biomaId) .. "...", C.blue)
         elseif acao == "Chegou" then
-            if not areaId or areaId == S.biomaId or areaId == S.portalAreaAtual then
+            if S.farmBiomaAtivo and (not areaId or areaId == S.biomaId or areaId == S.portalAreaAtual) then
                 S.portalEmCurso = false
                 portalAtual = nil
                 portalAguardandoDesde = 0
@@ -1268,6 +1285,8 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
                 SLab4.Text = "Farm iniciado em " .. tostring(areaId or S.biomaId)
             end
         elseif acao == "Erro" then
+            -- Não deixa erro atrasado do portal antigo cancelar a nova área.
+            if areaId and areaId ~= S.biomaId and areaId ~= S.portalAreaAtual then return end
             S.portalEmCurso = false
             S.farmBiomaAtivo = false
             atualizarEstadoFarm()
