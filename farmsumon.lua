@@ -15,18 +15,18 @@ local DadosArmas = require(ReplicatedStorage:WaitForChild("DadosArmas"))
 local DadosMonstros = require(ReplicatedStorage:WaitForChild("DadosMonstros"))
 
 local C = {
-    bg      = Color3.fromRGB(10, 14, 28),
-    card    = Color3.fromRGB(18, 25, 45),
-    card2   = Color3.fromRGB(29, 40, 69),
-    stroke  = Color3.fromRGB(54, 76, 120),
-    text    = Color3.fromRGB(245, 248, 255),
-    dim     = Color3.fromRGB(155, 173, 207),
-    blue    = Color3.fromRGB(44, 139, 255),
-    green   = Color3.fromRGB(0, 230, 156),
+    bg      = Color3.fromRGB(9, 13, 18),
+    card    = Color3.fromRGB(17, 25, 32),
+    card2   = Color3.fromRGB(27, 41, 40),
+    stroke  = Color3.fromRGB(37, 52, 47),
+    text    = Color3.fromRGB(241, 245, 249),
+    dim     = Color3.fromRGB(130, 145, 141),
+    blue    = Color3.fromRGB(83, 240, 165),
+    green   = Color3.fromRGB(53, 217, 149),
     red     = Color3.fromRGB(255, 76, 115),
     orange  = Color3.fromRGB(255, 151, 61),
     gold    = Color3.fromRGB(255, 216, 82),
-    purple  = Color3.fromRGB(181, 93, 255),
+    purple  = Color3.fromRGB(99, 191, 151),
 }
 local F  = Enum.Font.Gotham
 local FB = Enum.Font.GothamBold
@@ -129,7 +129,7 @@ Main.BorderSizePixel = 0
 Main.Active = true
 Main.Parent = GUI
 corner(Main, 20)
-stroke(Main, Color3.fromRGB(45, 63, 99), 1)
+stroke(Main, C.stroke, 1)
 
 -- Header
 local Header = Instance.new("Frame")
@@ -140,9 +140,9 @@ Header.Parent = Main
 corner(Header, 18)
 local HeaderGradient = Instance.new("UIGradient")
 HeaderGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(23, 44, 88)),
-    ColorSequenceKeypoint.new(0.55, Color3.fromRGB(24, 34, 65)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(64, 31, 103)),
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(13, 35, 29)),
+    ColorSequenceKeypoint.new(0.55, Color3.fromRGB(17, 31, 28)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 58, 43)),
 })
 HeaderGradient.Rotation = 0
 HeaderGradient.Parent = Header
@@ -321,7 +321,7 @@ local function toggle(parent, texto, default, cb)
     local Track = Instance.new("Frame")
     Track.Size = UDim2.fromOffset(48, 28)
     Track.Position = UDim2.new(1, -62, 0.5, -14)
-    Track.BackgroundColor3 = default and C.green or Color3.fromRGB(80, 80, 90)
+    Track.BackgroundColor3 = default and C.green or Color3.fromRGB(57, 69, 64)
     Track.BorderSizePixel = 0
     Track.Parent = R
     corner(Track, 14)
@@ -344,7 +344,7 @@ local function toggle(parent, texto, default, cb)
     Click.Activated:Connect(function()
         est = not est
         TweenService:Create(Track, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = est and C.green or Color3.fromRGB(80, 80, 90)
+            BackgroundColor3 = est and C.green or Color3.fromRGB(57, 69, 64)
         }):Play()
         TweenService:Create(Knob, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
             Position = est and UDim2.new(1, -26, 0, 2) or UDim2.fromOffset(2, 2)
@@ -385,7 +385,7 @@ local function slider(parent, texto, minV, maxV, default, cb)
     local Track = Instance.new("Frame")
     Track.Size = UDim2.new(1, -28, 0, 4)
     Track.Position = UDim2.fromOffset(14, 38)
-    Track.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+    Track.BackgroundColor3 = Color3.fromRGB(37, 49, 44)
     Track.BorderSizePixel = 0
     Track.Parent = R
     corner(Track, 2)
@@ -455,7 +455,7 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
     local Btn = Instance.new("TextButton")
     Btn.Size = UDim2.fromOffset(larguraBotao, 32)
     Btn.Position = UDim2.new(1, -larguraBotao - 8, 0.5, -16)
-    Btn.BackgroundColor3 = Color3.fromRGB(29, 43, 70)
+    Btn.BackgroundColor3 = Color3.fromRGB(27, 41, 40)
     Btn.Text = tostring(defaultNome or "Selecionar") .. "  ▾"
     Btn.TextColor3 = C.text
     Btn.TextSize = 11
@@ -513,7 +513,7 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
         popup.Name = "CreaturePicker"
         popup.Size = UDim2.fromOffset(width, height)
         popup.Position = UDim2.fromOffset(x, y)
-        popup.BackgroundColor3 = Color3.fromRGB(20, 29, 49)
+        popup.BackgroundColor3 = Color3.fromRGB(17, 25, 32)
         popup.BorderSizePixel = 0
         popup.ZIndex = 20
         popup.Parent = popupLayer
@@ -542,7 +542,7 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
             local option = Instance.new("TextButton")
             option.Name = "CreatureOption"
             option.Size = UDim2.new(1, -2, 0, rowHeight)
-            option.BackgroundColor3 = (op.id == S.monstroId) and Color3.fromRGB(37, 77, 132) or Color3.fromRGB(20, 29, 49)
+            option.BackgroundColor3 = (op.id == S.monstroId) and Color3.fromRGB(24, 75, 53) or Color3.fromRGB(17, 25, 32)
             option.BackgroundTransparency = (op.id == S.monstroId) and 0 or 1
             option.BorderSizePixel = 0
             option.Text = "   " .. tostring(op.nome)
