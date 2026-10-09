@@ -1,5 +1,5 @@
 -- ============================================================
--- DEX FARM v5.5 — UI organizada + modo Torre separado
+-- DEX FARM v5.9 — interface Obsidian UI Library
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -14,23 +14,18 @@ local Atacar = ReplicatedStorage:WaitForChild("Atacar")
 local DadosArmas = require(ReplicatedStorage:WaitForChild("DadosArmas"))
 local DadosMonstros = require(ReplicatedStorage:WaitForChild("DadosMonstros"))
 
+-- Cores semânticas usadas pelos avisos de estado; a aparência dos controles
+-- pertence integralmente ao tema da biblioteca Obsidian.
 local C = {
-    bg      = Color3.fromRGB(9, 13, 18),
-    card    = Color3.fromRGB(17, 25, 32),
-    card2   = Color3.fromRGB(27, 41, 40),
-    stroke  = Color3.fromRGB(37, 52, 47),
-    text    = Color3.fromRGB(241, 245, 249),
-    dim     = Color3.fromRGB(130, 145, 141),
-    blue    = Color3.fromRGB(83, 240, 165),
-    green   = Color3.fromRGB(53, 217, 149),
-    red     = Color3.fromRGB(255, 76, 115),
-    orange  = Color3.fromRGB(255, 151, 61),
-    gold    = Color3.fromRGB(255, 216, 82),
-    purple  = Color3.fromRGB(99, 191, 151),
+    text = Color3.fromRGB(241, 245, 249),
+    dim = Color3.fromRGB(148, 163, 184),
+    blue = Color3.fromRGB(96, 165, 250),
+    green = Color3.fromRGB(74, 222, 128),
+    red = Color3.fromRGB(248, 113, 113),
+    orange = Color3.fromRGB(251, 146, 60),
+    gold = Color3.fromRGB(250, 204, 21),
+    purple = Color3.fromRGB(192, 132, 252),
 }
-local F  = Enum.Font.Gotham
-local FB = Enum.Font.GothamBold
-local FM = Enum.Font.GothamMedium
 
 local S = {
     ativo = false, -- calculado pelos modos individuais
@@ -48,7 +43,6 @@ local S = {
     abates = 0,
     coletados = 0,
     alvoAtual = "nenhum",
-    -- Inventário
     autoEquipar = true,
     autoLimpar = true,
     autoVenderAte = true,
@@ -63,542 +57,157 @@ local S = {
     moedasVendidas = 0,
     itensVendidos = 0,
     equipamentos = 0,
-    -- Portais de área
     portalAreaAtual = "Hub",
     portalAutoViajar = true,
     portalEmCurso = false,
     movimentoToken = 0,
-    -- Torre via remote TorreEvento
     torreAtivo = false,
     torreAutoEntrar = true,
     torreAutoAdvance = true,
     torreAutoReviver = true,
     torreAndar = 0,
 }
+
 local walkOriginal = 16
-
--- Ações do inventário são declaradas antes da interface porque os botões as usam.
 local equiparMelhores, limparRepetidos, venderAte, sincronizarInv
+local setStatus
+local iniciarPortalArea
+local selecionarBioma
+local atualizarEstadoFarm
+local SLab, SLab2, SLab3, SLab4
+local StatMoedas, StatItens, StatEquip
+local GUI
+local FarmBiomeToggle, TowerFarmToggle
+local sincronizandoToggles = false
+local sincronizandoArea = false
+local sincronizandoCriatura = false
 
--- Limpa
-for _, g in pairs(LP.PlayerGui:GetChildren()) do
-    if g.Name == "DexFarm" or g.Name == "DexFarmDrop" then g:Destroy() end
+-- A biblioteca e o tema são carregados da fonte oficial do projeto Obsidian.
+-- Falha de rede/carregamento encerra com uma mensagem clara em vez de deixar
+-- meia interface antiga e meia interface nova na tela.
+local repoObsidian = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
+local okLibrary, LibraryOrError = pcall(function()
+    local source = game:HttpGet(repoObsidian .. "Library.lua")
+    local loader = loadstring(source)
+    assert(loader, "loadstring não está disponível neste ambiente")
+    return loader()
+end)
+if not okLibrary or type(LibraryOrError) ~= "table" then
+    warn("[DexFarm] Não foi possível carregar a Obsidian UI Library: " .. tostring(LibraryOrError))
+    return
+end
+local Library = LibraryOrError
+
+local okTheme, ThemeManagerOrError = pcall(function()
+    local source = game:HttpGet(repoObsidian .. "addons/ThemeManager.lua")
+    local loader = loadstring(source)
+    assert(loader, "não foi possível preparar o ThemeManager")
+    return loader()
+end)
+local ThemeManager = okTheme and ThemeManagerOrError or nil
+if ThemeManager then
+    ThemeManager:SetLibrary(Library)
+    ThemeManager:SetFolder("DexFarm")
+    pcall(function()
+        ThemeManager:ApplyTheme("Catppuccin")
+    end)
+else
+    warn("[DexFarm] ThemeManager indisponível; a interface usará o tema padrão da Obsidian.")
 end
 
-local GUI = Instance.new("ScreenGui")
-GUI.Name = "DexFarm"
-GUI.ResetOnSpawn = false
-GUI.IgnoreGuiInset = true
-GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-GUI.DisplayOrder = 999
-GUI.Parent = LP:WaitForChild("PlayerGui")
+Library.ForceCheckbox = false
+Library.ShowToggleFrameInKeybinds = true
+Library.NotifyOnError = true
 
--- GUI separada para o dropdown (fica por cima de tudo)
-local DropGui = Instance.new("ScreenGui")
-DropGui.Name = "DexFarmDrop"
-DropGui.ResetOnSpawn = false
-DropGui.IgnoreGuiInset = true
-DropGui.DisplayOrder = 9999
-DropGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-DropGui.Parent = LP:WaitForChild("PlayerGui")
-
-local function corner(p, r)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = p
-end
-local function stroke(p, c, t)
-    local s = Instance.new("UIStroke")
-    s.Color = c or C.stroke; s.Thickness = t or 1; s.Parent = p
-end
-
--- ============================================================
--- JANELA
--- ============================================================
-local camera = workspace.CurrentCamera
-local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
--- Layout compacto, especialmente para telas de celular.
-local isMobile = UserInputService.TouchEnabled or viewport.X <= 600
-local W = math.floor(math.clamp(viewport.X * (isMobile and 0.84 or 0.72), isMobile and 248 or 320, isMobile and 360 or 440))
-local alturaMaxima = math.max(280, math.min(isMobile and 420 or 560, viewport.Y - 36))
-local H = math.floor(math.clamp(viewport.Y * (isMobile and 0.58 or 0.72), math.min(300, alturaMaxima), alturaMaxima))
-
-local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(W, H)
-Main.Position = UDim2.new(0.5, -W/2, 0.5, -H/2)
-Main.BackgroundColor3 = C.bg
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Parent = GUI
-corner(Main, 20)
-stroke(Main, C.stroke, 1)
-
--- Header
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, isMobile and 48 or 54)
-Header.BackgroundColor3 = C.card
-Header.BorderSizePixel = 0
-Header.Parent = Main
-corner(Header, 18)
-local HeaderGradient = Instance.new("UIGradient")
-HeaderGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(13, 35, 29)),
-    ColorSequenceKeypoint.new(0.55, Color3.fromRGB(17, 31, 28)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 58, 43)),
+local Window = Library:CreateWindow({
+    Title = "DEX FARM",
+    Footer = "v5.9 • Obsidian UI",
+    Icon = 95816097006870,
+    Center = true,
+    AutoShow = true,
+    Resizable = true,
+    ToggleKeybind = Enum.KeyCode.RightControl,
+    NotifySide = "Right",
+    ShowCustomCursor = false,
+    AlwaysOnTop = true,
+    ShowMobileButtons = true,
+    MobileButtonsSide = "Right",
+    Size = UDim2.fromOffset(650, 520),
 })
-HeaderGradient.Rotation = 0
-HeaderGradient.Parent = Header
 
-local HFix = Instance.new("Frame")
-HFix.Size = UDim2.new(1, 0, 0, 18)
-HFix.Position = UDim2.new(0, 0, 1, -18)
-HFix.BackgroundColor3 = C.card
-HFix.BorderSizePixel = 0
-HFix.Parent = Header
-
-local Icon = Instance.new("TextLabel")
-Icon.Size = UDim2.fromOffset(26, 26)
-Icon.Position = UDim2.fromOffset(13, isMobile and 10 or 13)
-Icon.BackgroundTransparency = 1
-Icon.Text = "✦"
-Icon.TextColor3 = C.blue
-Icon.TextSize = 22
-Icon.Font = FB
-Icon.Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -120, 0, 20)
-Title.Position = UDim2.fromOffset(44, isMobile and 7 or 11)
-Title.BackgroundTransparency = 1
-Title.Text = "DEX FARM"
-Title.TextColor3 = C.text
-Title.TextSize = isMobile and 14 or 16
-Title.Font = FB
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
-local Sub = Instance.new("TextLabel")
-Sub.Size = UDim2.new(1, -120, 0, 14)
-Sub.Position = UDim2.fromOffset(44, isMobile and 26 or 30)
-Sub.BackgroundTransparency = 1
-Sub.Text = "v5.5 · farm por área + Torre"
-Sub.TextColor3 = C.dim
-Sub.TextSize = 10
-Sub.Font = F
-Sub.TextXAlignment = Enum.TextXAlignment.Left
-Sub.Parent = Header
-
-local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.fromOffset(isMobile and 27 or 30, isMobile and 27 or 30)
-MinBtn.Position = UDim2.new(1, isMobile and -68 or -76, 0, isMobile and 10 or 12)
-MinBtn.BackgroundColor3 = C.card2
-MinBtn.Text = "—"
-MinBtn.TextColor3 = C.text
-MinBtn.TextSize = 14
-MinBtn.Font = FB
-MinBtn.AutoButtonColor = false
-MinBtn.Parent = Header
-corner(MinBtn, 15)
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.fromOffset(isMobile and 27 or 30, isMobile and 27 or 30)
-CloseBtn.Position = UDim2.new(1, isMobile and -36 or -42, 0, isMobile and 10 or 12)
-CloseBtn.BackgroundColor3 = C.red
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.new(1,1,1)
-CloseBtn.TextSize = 12
-CloseBtn.Font = FB
-CloseBtn.AutoButtonColor = false
-CloseBtn.Parent = Header
-corner(CloseBtn, 15)
-
--- ============================================================
--- SCROLL — Fix #1: AutomaticCanvasSize (sem scroll infinito)
--- ============================================================
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -16, 1, -(isMobile and 62 or 74))
-Scroll.Position = UDim2.fromOffset(8, isMobile and 56 or 64)
-Scroll.BackgroundTransparency = 1
-Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = isMobile and 2 or 3
-Scroll.ScrollBarImageColor3 = C.stroke
-Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)  -- ← deixa o Automatic calcular
-Scroll.ScrollBarImageTransparency = 0.3
-Scroll.Parent = Main
-
-local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, isMobile and 7 or 12)
-Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Parent = Scroll
-
-local Pad = Instance.new("UIPadding")
-Pad.PaddingTop = UDim.new(0, 3)
-Pad.PaddingBottom = UDim.new(0, isMobile and 10 or 20)
-Pad.PaddingRight = UDim.new(0, 4)
-Pad.Parent = Scroll
-
--- ============================================================
--- COMPONENTES
--- ============================================================
-local function secao(titulo, altura)
-    local alturaSecao = isMobile and (titulo == "Farm / Biomas" and 238 or altura) or altura
-    local Holder = Instance.new("Frame")
-    Holder.Size = UDim2.new(1, -8, 0, alturaSecao + 38)
-    Holder.BackgroundTransparency = 1
-    Holder.Parent = Scroll
-
-    local Head = Instance.new("TextButton")
-    Head.Size = UDim2.new(1, 0, 0, isMobile and 30 or 32)
-    Head.BackgroundColor3 = C.card2
-    Head.BorderSizePixel = 0
-    Head.Text = "  " .. titulo
-    Head.TextColor3 = C.text
-    Head.TextSize = isMobile and 12 or 13
-    Head.Font = FB
-    Head.TextXAlignment = Enum.TextXAlignment.Left
-    Head.AutoButtonColor = false
-    Head.Parent = Holder
-    corner(Head, 9)
-    stroke(Head, C.stroke, 1)
-    local Arrow = Instance.new("TextLabel")
-    Arrow.Size = UDim2.fromOffset(28, 32)
-    Arrow.Position = UDim2.new(1, -32, 0, 0)
-    Arrow.BackgroundTransparency = 1
-    Arrow.Text = "v"
-    Arrow.TextColor3 = C.dim
-    Arrow.TextSize = 18
-    Arrow.Font = FB
-    Arrow.Parent = Head
-
-    local Box = Instance.new("Frame")
-    Box.Size = UDim2.new(1, 0, 0, alturaSecao)
-    Box.Position = UDim2.fromOffset(0, 38)
-    Box.BackgroundColor3 = C.card
-    Box.BorderSizePixel = 0
-    Box.Parent = Holder
-    corner(Box, 12)
-    stroke(Box, C.stroke, 1)
-
-    local BL = Instance.new("UIListLayout")
-    BL.Padding = UDim.new(0, 0)
-    BL.SortOrder = Enum.SortOrder.LayoutOrder
-    BL.Parent = Box
-
-    local BP = Instance.new("UIPadding")
-    BP.PaddingTop = UDim.new(0, 6)
-    BP.PaddingBottom = UDim.new(0, 6)
-    BP.Parent = Box
-
-    local expanded = not isMobile or titulo == "Farm / Biomas"
-    Box.Visible = expanded
-    Holder.Size = UDim2.new(1, -8, 0, expanded and (alturaSecao + 38) or 32)
-    Arrow.Text = expanded and "⌄" or "›"
-    Head.Activated:Connect(function()
-        expanded = not expanded
-        Box.Visible = expanded
-        Holder.Size = UDim2.new(1, -8, 0, expanded and (alturaSecao + 38) or 32)
-        Arrow.Text = expanded and "⌄" or "›"
-    end)
-    return Box
+GUI = Library.ScreenGui
+if not GUI then
+    pcall(function() Library:Unload() end)
+    warn("[DexFarm] A Obsidian não criou sua ScreenGui; execução interrompida.")
+    return
 end
 
-local function toggle(parent, texto, default, cb)
-    local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 42)
-    R.BackgroundTransparency = 1
-    R.Parent = parent
+local Tabs = {
+    Farm = Window:AddTab("Farm", "target"),
+    Movimento = Window:AddTab("Movimento", "move"),
+    Inventario = Window:AddTab("Inventário", "backpack"),
+    Torre = Window:AddTab("Torre", "layers"),
+    Config = Window:AddTab("Configurações", "settings"),
+}
 
-    local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -86, 1, 0)
-    L.Position = UDim2.fromOffset(14, 0)
-    L.BackgroundTransparency = 1
-    L.Text = texto
-    L.TextColor3 = C.text
-    L.TextSize = 14
-    L.Font = FM
-    L.TextXAlignment = Enum.TextXAlignment.Left
-    L.Parent = R
-
-    local Track = Instance.new("Frame")
-    Track.Size = UDim2.fromOffset(48, 28)
-    Track.Position = UDim2.new(1, -62, 0.5, -14)
-    Track.BackgroundColor3 = default and C.green or Color3.fromRGB(57, 69, 64)
-    Track.BorderSizePixel = 0
-    Track.Parent = R
-    corner(Track, 14)
-
-    local Knob = Instance.new("Frame")
-    Knob.Size = UDim2.fromOffset(24, 24)
-    Knob.Position = default and UDim2.new(1, -26, 0, 2) or UDim2.fromOffset(2, 2)
-    Knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    Knob.BorderSizePixel = 0
-    Knob.Parent = Track
-    corner(Knob, 12)
-
-    local Click = Instance.new("TextButton")
-    Click.Size = UDim2.fromScale(1, 1)
-    Click.BackgroundTransparency = 1
-    Click.Text = ""
-    Click.Parent = R
-
-    local est = default
-    Click.Activated:Connect(function()
-        est = not est
-        TweenService:Create(Track, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = est and C.green or Color3.fromRGB(57, 69, 64)
-        }):Play()
-        TweenService:Create(Knob, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
-            Position = est and UDim2.new(1, -26, 0, 2) or UDim2.fromOffset(2, 2)
-        }):Play()
-        if cb then cb(est) end
-    end)
-    return { set = function(v) est = v end }
-end
-
-local function slider(parent, texto, minV, maxV, default, cb)
-    local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 56)
-    R.BackgroundTransparency = 1
-    R.Parent = parent
-
-    local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -100, 0, 18)
-    L.Position = UDim2.fromOffset(14, 8)
-    L.BackgroundTransparency = 1
-    L.Text = texto
-    L.TextColor3 = C.text
-    L.TextSize = 13
-    L.Font = FM
-    L.TextXAlignment = Enum.TextXAlignment.Left
-    L.Parent = R
-
-    local Val = Instance.new("TextLabel")
-    Val.Size = UDim2.fromOffset(60, 18)
-    Val.Position = UDim2.new(1, -74, 0, 8)
-    Val.BackgroundTransparency = 1
-    Val.Text = tostring(default)
-    Val.TextColor3 = C.blue
-    Val.TextSize = 13
-    Val.Font = FB
-    Val.TextXAlignment = Enum.TextXAlignment.Right
-    Val.Parent = R
-
-    local Track = Instance.new("Frame")
-    Track.Size = UDim2.new(1, -28, 0, 4)
-    Track.Position = UDim2.fromOffset(14, 38)
-    Track.BackgroundColor3 = Color3.fromRGB(37, 49, 44)
-    Track.BorderSizePixel = 0
-    Track.Parent = R
-    corner(Track, 2)
-
-    local Fill = Instance.new("Frame")
-    Fill.Size = UDim2.new((default - minV) / (maxV - minV), 0, 1, 0)
-    Fill.BackgroundColor3 = C.blue
-    Fill.BorderSizePixel = 0
-    Fill.Parent = Track
-    corner(Fill, 2)
-
-    local Knob = Instance.new("Frame")
-    Knob.AnchorPoint = Vector2.new(0.5, 0.5)
-    Knob.Size = UDim2.fromOffset(16, 16)
-    Knob.Position = UDim2.new((default - minV) / (maxV - minV), 0, 0.5, 0)
-    Knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    Knob.BorderSizePixel = 0
-    Knob.Parent = Track
-    corner(Knob, 8)
-
-    local Click = Instance.new("TextButton")
-    Click.Size = UDim2.fromScale(1, 1)
-    Click.BackgroundTransparency = 1
-    Click.Text = ""
-    Click.Parent = R
-
-    local drag = false
-    local function setX(x)
-        local rel = math.clamp((x - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
-        local v = minV + rel * (maxV - minV)
-        v = math.floor(v * 10 + 0.5) / 10
-        Fill.Size = UDim2.new(rel, 0, 1, 0)
-        Knob.Position = UDim2.new(rel, 0, 0.5, 0)
-        Val.Text = tostring(v)
-        if cb then cb(v) end
-    end
-    Click.MouseButton1Down:Connect(function() drag = true; setX(UserInputService:GetMouseLocation().X) end)
-    UserInputService.InputChanged:Connect(function(i)
-        if drag and i.UserInputType == Enum.UserInputType.MouseMovement then setX(i.Position.X) end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+if ThemeManager then
+    pcall(function()
+        ThemeManager:ApplyToTab(Tabs.Config)
+        ThemeManager:ApplyTheme("Catppuccin")
     end)
 end
 
--- ============================================================
--- DROPDOWN — Fix #2: usa GUI separada + CanvasSize correto
--- ============================================================
-local function dropdown(parent, texto, opcoes, defaultNome, cb)
-    local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 42)
-    R.BackgroundTransparency = 1
-    R.Parent = parent
+local FarmBox = Tabs.Farm:AddLeftGroupbox("Farm por bioma", "map")
+local FarmStatusBox = Tabs.Farm:AddRightGroupbox("Estado atual", "activity")
+local CombatBox = Tabs.Farm:AddRightGroupbox("Combate e coleta", "swords")
+local MovementBox = Tabs.Movimento:AddLeftGroupbox("Movimento", "move")
+local InventoryBox = Tabs.Inventario:AddLeftGroupbox("Automação do inventário", "package")
+local EconomyBox = Tabs.Inventario:AddRightGroupbox("Estatísticas", "chart-no-axes-combined")
+local InventoryActionsBox = Tabs.Inventario:AddRightGroupbox("Ações rápidas", "zap")
+local PortalBox = Tabs.Movimento:AddRightGroupbox("Viajar para área", "map-pin")
+local TowerBox = Tabs.Torre:AddLeftGroupbox("Torre infinita", "layers")
+local TowerStatusBox = Tabs.Torre:AddRightGroupbox("Status da torre", "activity")
+local ConfigBox = Tabs.Config:AddLeftGroupbox("Controles da interface", "sliders-horizontal")
 
-    local larguraBotao = math.clamp((parent.AbsoluteSize.X > 0 and parent.AbsoluteSize.X or 260) * 0.58, 118, 166)
-    local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -larguraBotao - 26, 1, 0)
-    L.Position = UDim2.fromOffset(12, 0)
-    L.BackgroundTransparency = 1
-    L.Text = texto
-    L.TextColor3 = C.text
-    L.TextSize = 12
-    L.Font = FM
-    L.TextXAlignment = Enum.TextXAlignment.Left
-    L.Parent = R
+local AreaInfo = FarmBox:AddLabel({
+    Text = "Selecione uma área para ver suas criaturas.",
+    DoesWrap = true,
+})
+local CreatureInfo = FarmBox:AddLabel({
+    Text = "A lista de criaturas acompanha o bioma selecionado.",
+    DoesWrap = true,
+})
+local AreaDropdown
+local MonsterDropdown
+local PortalDropdown
 
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.fromOffset(larguraBotao, 32)
-    Btn.Position = UDim2.new(1, -larguraBotao - 8, 0.5, -16)
-    Btn.BackgroundColor3 = Color3.fromRGB(27, 41, 40)
-    Btn.Text = tostring(defaultNome or "Selecionar") .. "  ▾"
-    Btn.TextColor3 = C.text
-    Btn.TextSize = 11
-    Btn.Font = FB
-    Btn.AutoButtonColor = false
-    Btn.TextTruncate = Enum.TextTruncate.AtEnd
-    Btn.Active = true
-    Btn.ZIndex = 2
-    Btn.Parent = R
-    corner(Btn, 10)
-    stroke(Btn, C.blue, 1)
+SLab = FarmStatusBox:AddLabel({ Text = "● Inativo", DoesWrap = true })
+SLab2 = FarmStatusBox:AddLabel({ Text = "Abates: 0 · Núcleos: 0", DoesWrap = true })
+SLab3 = FarmStatusBox:AddLabel({ Text = "Alvo: nenhum", DoesWrap = true })
+SLab4 = FarmStatusBox:AddLabel({ Text = "Pronto.", DoesWrap = true })
 
-    local popupLayer
-    local aberto = false
-    local function fechar()
-        if popupLayer then popupLayer:Destroy(); popupLayer = nil end
-        aberto = false
-    end
+local TowerStatusLabel = TowerStatusBox:AddLabel({
+    Text = "Aguardando ativação da Torre.",
+    DoesWrap = true,
+})
 
-    local function abrir()
-        if aberto then fechar(); return end
-        if not DropGui or not DropGui.Parent or #opcoes == 0 then return end
-        aberto = true
+StatMoedas = EconomyBox:AddLabel("Moedas ganhas: 0", false)
+StatItens = EconomyBox:AddLabel("Itens vendidos: 0", false)
+StatEquip = EconomyBox:AddLabel("Equipamentos trocados: 0", false)
 
-        -- O botão de fechar e a lista ficam em camadas separadas. O overlay
-        -- não é pai da lista, portanto não pode roubar o toque da opção.
-        popupLayer = Instance.new("Frame")
-        popupLayer.Name = "CreaturePickerLayer"
-        popupLayer.Size = UDim2.fromScale(1, 1)
-        popupLayer.BackgroundTransparency = 1
-        popupLayer.ZIndex = 10
-        popupLayer.Parent = DropGui
-
-        local outside = Instance.new("TextButton")
-        outside.Name = "Dismiss"
-        outside.Size = UDim2.fromScale(1, 1)
-        outside.BackgroundTransparency = 1
-        outside.Text = ""
-        outside.AutoButtonColor = false
-        outside.Active = true
-        outside.ZIndex = 10
-        outside.Parent = popupLayer
-        outside.Activated:Connect(fechar)
-
-        local cam = workspace.CurrentCamera
-        local screen = cam and cam.ViewportSize or Vector2.new(360, 640)
-        local width = math.min(math.max(Btn.AbsoluteSize.X + 20, 160), screen.X - 16)
-        local rowHeight = 36
-        local height = math.min(#opcoes * rowHeight + 8, math.floor(screen.Y * 0.40), 260)
-        local x = math.clamp(Btn.AbsolutePosition.X + Btn.AbsoluteSize.X - width, 8, screen.X - width - 8)
-        local y = Btn.AbsolutePosition.Y + Btn.AbsoluteSize.Y + 5
-        if y + height > screen.Y - 8 then y = math.max(8, Btn.AbsolutePosition.Y - height - 5) end
-
-        local popup = Instance.new("Frame")
-        popup.Name = "CreaturePicker"
-        popup.Size = UDim2.fromOffset(width, height)
-        popup.Position = UDim2.fromOffset(x, y)
-        popup.BackgroundColor3 = Color3.fromRGB(17, 25, 32)
-        popup.BorderSizePixel = 0
-        popup.ZIndex = 20
-        popup.Parent = popupLayer
-        corner(popup, 14)
-        stroke(popup, C.blue, 1.25)
-
-        local list = Instance.new("ScrollingFrame")
-        list.Size = UDim2.new(1, -8, 1, -8)
-        list.Position = UDim2.fromOffset(4, 4)
-        list.BackgroundTransparency = 1
-        list.BorderSizePixel = 0
-        list.ScrollBarThickness = 3
-        list.ScrollBarImageColor3 = C.blue
-        list.ScrollingEnabled = true
-        list.Active = true
-        list.ZIndex = 21
-        list.CanvasSize = UDim2.fromOffset(0, #opcoes * rowHeight)
-        list.Parent = popup
-
-        local layout = Instance.new("UIListLayout")
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 1)
-        layout.Parent = list
-
-        for i, op in ipairs(opcoes) do
-            local option = Instance.new("TextButton")
-            option.Name = "CreatureOption"
-            option.Size = UDim2.new(1, -2, 0, rowHeight)
-            option.BackgroundColor3 = (op.id == S.monstroId) and Color3.fromRGB(24, 75, 53) or Color3.fromRGB(17, 25, 32)
-            option.BackgroundTransparency = (op.id == S.monstroId) and 0 or 1
-            option.BorderSizePixel = 0
-            option.Text = "   " .. tostring(op.nome)
-            option.TextColor3 = C.text
-            option.TextSize = 12
-            option.Font = (op.id == S.monstroId) and FB or F
-            option.TextXAlignment = Enum.TextXAlignment.Left
-            option.AutoButtonColor = false
-            option.Active = true
-            option.Selectable = true
-            option.LayoutOrder = i
-            option.ZIndex = 22
-            option.Parent = list
-            corner(option, 8)
-            option.Activated:Connect(function()
-                Btn.Text = tostring(op.nome) .. "  ▾"
-                S.monstroId = op.id
-                S.monstroNome = op.nome
-                if cb then cb(op.id, op.nome) end
-                fechar()
-            end)
-        end
-    end
-
-    Btn.Activated:Connect(abrir)
+local function aviso(texto, duracao)
+    pcall(function()
+        Library:Notify({
+            Title = "DEX FARM",
+            Description = tostring(texto),
+            Time = duracao or 3,
+        })
+    end)
 end
 
-local function botao(parent, texto, cor, cb)
-    local B = Instance.new("TextButton")
-    B.Size = UDim2.new(1, 0, 0, 46)
-    B.BackgroundColor3 = C.card
-    B.Text = texto
-    B.TextColor3 = cor or C.blue
-    B.TextSize = 15
-    B.Font = FB
-    B.AutoButtonColor = false
-    B.Parent = parent
-    corner(B, 12)
-    stroke(B, C.stroke, 1)
-
-    B.MouseButton1Down:Connect(function()
-        TweenService:Create(B, TweenInfo.new(0.1), { BackgroundColor3 = C.card2 }):Play()
-    end)
-    B.MouseButton1Up:Connect(function()
-        TweenService:Create(B, TweenInfo.new(0.2), { BackgroundColor3 = C.card }):Play()
-    end)
-    B.MouseLeave:Connect(function()
-        TweenService:Create(B, TweenInfo.new(0.2), { BackgroundColor3 = C.card }):Play()
-    end)
-    if cb then B.Activated:Connect(cb) end
-    return B
+local function atualizarTextoTorre(texto)
+    TowerStatusLabel:SetText(tostring(texto or ""))
 end
-
--- ============================================================
--- BIOMAS E CRIATURAS: cada monstro fica somente na sua área.
--- ============================================================
 local Biomas = {
     { id="Hub", nome="Hub · Clareira do Pylon", nivel="Nv. 1+", monstros={{id="Slime",nome="Slime Musgoso"},{id="Lobo",nome="Lobo Glacial"}} },
     { id="Deserto", nome="Deserto · Dunas Escaldantes", nivel="Nv. 8+", monstros={{id="Guardiao",nome="Guardião do Deserto"},{id="GuardiaoChefe",nome="Guardião Carmesim (chefe)"}} },
@@ -630,77 +239,359 @@ local function obterListaBioma(bioma)
 end
 
 -- ============================================================
--- SEÇÕES EXPANSÍVEIS + ABAS DE BIOMA
+-- INTERFACE OBSIDIAN: controles conectados à lógica existente
 -- ============================================================
-local BoxFarm = secao("Farm / Biomas", 286)
-local AreaTitle = Instance.new("TextLabel")
-AreaTitle.Size = UDim2.new(1, -20, 0, 18)
-AreaTitle.BackgroundTransparency = 1
-AreaTitle.Text = "BIOMA / ÁREA"
-AreaTitle.TextColor3 = C.dim
-AreaTitle.TextSize = 10
-AreaTitle.Font = FB
-AreaTitle.TextXAlignment = Enum.TextXAlignment.Left
-AreaTitle.Parent = BoxFarm
 
-local AreaInfo = Instance.new("TextLabel")
-AreaInfo.Size = UDim2.new(1, -20, 0, 18)
-AreaInfo.BackgroundTransparency = 1
-AreaInfo.Text = "Selecione a área para listar apenas suas criaturas."
-AreaInfo.TextColor3 = C.dim
-AreaInfo.TextSize = 10
-AreaInfo.Font = F
-AreaInfo.TextXAlignment = Enum.TextXAlignment.Left
-AreaInfo.Parent = BoxFarm
+local function obterListaBioma(bioma)
+    local lista = {}
+    for _, criatura in ipairs(bioma.monstros) do
+        table.insert(lista, { id = criatura.id, nome = criatura.nome })
+    end
+    return lista
+end
 
-local AreaTabs = Instance.new("ScrollingFrame")
-AreaTabs.Size = UDim2.new(1, -16, 0, 38)
-AreaTabs.BackgroundTransparency = 1
-AreaTabs.BorderSizePixel = 0
-AreaTabs.ScrollBarThickness = 2
-AreaTabs.ScrollBarImageColor3 = C.blue
-AreaTabs.ScrollingDirection = Enum.ScrollingDirection.X
-AreaTabs.CanvasSize = UDim2.new(0, 0, 0, 0)
-AreaTabs.AutomaticCanvasSize = Enum.AutomaticSize.X
-AreaTabs.Parent = BoxFarm
-local AreaTabsLayout = Instance.new("UIListLayout")
-AreaTabsLayout.FillDirection = Enum.FillDirection.Horizontal
-AreaTabsLayout.Padding = UDim.new(0, 6)
-AreaTabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-AreaTabsLayout.Parent = AreaTabs
+local function mapaBiomas()
+    local valores = {}
+    for _, bioma in ipairs(Biomas) do
+        valores[bioma.id] = bioma.nome
+    end
+    return valores
+end
 
-local MonsterHost = Instance.new("Frame")
-MonsterHost.Size = UDim2.new(1, 0, 0, 44)
-MonsterHost.BackgroundTransparency = 1
-MonsterHost.Parent = BoxFarm
+local function mapaAreasDeViagem()
+    local valores = {}
+    for _, area in ipairs(Biomas) do
+        if area.id ~= "Torre" then
+            valores[area.id] = area.nome
+        end
+    end
+    return valores
+end
 
-local FarmBiomeBtn, TowerFarmBtn, SLab4
-local setStatus
-local iniciarPortalArea
+AreaDropdown = FarmBox:AddDropdown("DexFarmBioma", {
+    Text = "Bioma / área",
+    Values = mapaBiomas(),
+    Default = "Hub",
+    Searchable = true,
+    Callback = function(id)
+        if sincronizandoArea then return end
+        for _, bioma in ipairs(Biomas) do
+            if bioma.id == id then
+                if selecionarBioma then selecionarBioma(bioma) end
+                break
+            end
+        end
+    end,
+})
 
-local function atualizarEstadoFarm()
+MonsterDropdown = FarmBox:AddDropdown("DexFarmCriatura", {
+    Text = "Criatura-alvo",
+    Values = { Slime = "Slime Musgoso" },
+    Default = "Slime",
+    Searchable = true,
+    Callback = function(id)
+        if sincronizandoCriatura then return end
+        if not id then return end
+        S.monstroId = id
+        local bioma = nil
+        for _, area in ipairs(Biomas) do
+            if area.id == S.biomaId then bioma = area break end
+        end
+        if bioma then
+            for _, criatura in ipairs(bioma.monstros) do
+                if criatura.id == id then
+                    S.monstroNome = criatura.nome
+                    break
+                end
+            end
+        end
+    end,
+})
+
+FarmBox:AddSlider("DexFarmDistancia", {
+    Text = "Distância do alvo",
+    Default = S.distancia,
+    Min = 3,
+    Max = 12,
+    Rounding = 0,
+    Callback = function(v) S.distancia = v end,
+})
+
+FarmBiomeToggle = FarmBox:AddToggle("DexFarmAtivo", {
+    Text = "Ativar farm do bioma",
+    Default = false,
+    Callback = function(ativado)
+        if sincronizandoToggles then return end
+        if ativado then
+            if S.biomaId == "Torre" then
+                sincronizandoToggles = true
+                FarmBiomeToggle:SetValue(false)
+                sincronizandoToggles = false
+                aviso("Selecione um bioma normal para usar este modo.")
+                return
+            end
+            S.torreFarmAtivo = false
+            S.torreAtivo = false
+            S.farmBiomaAtivo = true
+            atualizarEstadoFarm()
+            if S.biomaId ~= "Hub" then
+                if iniciarPortalArea then
+                    iniciarPortalArea(S.biomaId, false)
+                else
+                    setStatus("Preparando portal...", C.blue)
+                end
+            else
+                S.portalEmCurso = false
+                setStatus("Farm do bioma: " .. tostring(S.biomaId), C.green)
+            end
+        else
+            S.farmBiomaAtivo = false
+            S.portalEmCurso = false
+            atualizarEstadoFarm()
+            setStatus("Farm do bioma desativado", C.dim)
+        end
+    end,
+})
+
+local MovementSpeedToggle = MovementBox:AddToggle("DexFarmBoost", {
+    Text = "Boost de velocidade",
+    Default = S.walkBoost,
+    Callback = function(v)
+        S.walkBoost = v
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = v and S.walkSpeed or walkOriginal end
+    end,
+})
+MovementBox:AddSlider("DexFarmWalkSpeed", {
+    Text = "WalkSpeed",
+    Default = S.walkSpeed,
+    Min = 16,
+    Max = 250,
+    Rounding = 0,
+    Callback = function(v)
+        S.walkSpeed = v
+        if S.walkBoost then
+            local ch = LP.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            if hum then hum.WalkSpeed = v end
+        end
+    end,
+})
+
+CombatBox:AddToggle("DexFarmAutoAtaque", {
+    Text = "Auto ataque",
+    Default = S.autoAtaque,
+    Callback = function(v) S.autoAtaque = v end,
+})
+CombatBox:AddToggle("DexFarmTravarMira", {
+    Text = "Travar mira",
+    Default = S.travarMira,
+    Callback = function(v) S.travarMira = v end,
+})
+CombatBox:AddToggle("DexFarmAutoColetar", {
+    Text = "Auto coletar núcleos",
+    Default = S.autoColetar,
+    Callback = function(v) S.autoColetar = v end,
+})
+CombatBox:AddSlider("DexFarmRaioColeta", {
+    Text = "Raio de coleta",
+    Default = S.raioColeta,
+    Min = 10,
+    Max = 200,
+    Rounding = 0,
+    Suffix = " studs",
+    Callback = function(v) S.raioColeta = v end,
+})
+
+InventoryBox:AddToggle("DexFarmAutoEquipar", {
+    Text = "Auto equipar melhores",
+    Default = S.autoEquipar,
+    Callback = function(v) S.autoEquipar = v end,
+})
+InventoryBox:AddToggle("DexFarmAutoLimpar", {
+    Text = "Auto limpar repetidos",
+    Default = S.autoLimpar,
+    Callback = function(v) S.autoLimpar = v end,
+})
+InventoryBox:AddToggle("DexFarmAutoVender", {
+    Text = "Auto vender itens ruins",
+    Default = S.autoVenderAte,
+    Callback = function(v) S.autoVenderAte = v end,
+})
+InventoryBox:AddToggle("DexFarmAutoEvoluir", {
+    Text = "Auto evoluir iguais",
+    Default = S.autoEvoluir,
+    Callback = function(v) S.autoEvoluir = v end,
+})
+InventoryBox:AddToggle("DexFarmAutoCraftMelhores", {
+    Text = "Auto craftar só melhorias",
+    Default = S.autoCraftMelhores,
+    Callback = function(v) S.autoCraftMelhores = v end,
+})
+InventoryBox:AddSlider("DexFarmIntervaloInv", {
+    Text = "Intervalo do inventário",
+    Default = S.intervaloInv,
+    Min = 15,
+    Max = 180,
+    Rounding = 0,
+    Suffix = " s",
+    Callback = function(v) S.intervaloInv = math.floor(v + 0.5) end,
+})
+InventoryBox:AddDropdown("DexFarmRaridadeVender", {
+    Text = "Limite de raridade para venda",
+    Values = {
+        [1] = "Só Básicos",
+        [2] = "Até Raros",
+        [3] = "Até Épicos",
+    },
+    Default = 2,
+    Callback = function(id) S.raridadeVender = tonumber(id) or 2 end,
+})
+
+InventoryActionsBox:AddButton({
+    Text = "Equipar melhores agora",
+    Func = function()
+        if equiparMelhores then equiparMelhores() end
+        task.wait(1.2)
+        if sincronizarInv then sincronizarInv() end
+    end,
+})
+InventoryActionsBox:AddButton({
+    Text = "Limpar repetidos",
+    Func = function()
+        if limparRepetidos then limparRepetidos() end
+        task.wait(1.2)
+        if sincronizarInv then sincronizarInv() end
+    end,
+})
+InventoryActionsBox:AddButton({
+    Text = "Vender itens ruins",
+    Func = function()
+        if venderAte then venderAte(S.raridadeVender) end
+        task.wait(1.2)
+        if sincronizarInv then sincronizarInv() end
+    end,
+})
+
+PortalDropdown = PortalBox:AddDropdown("DexFarmDestino", {
+    Text = "Destino",
+    Values = mapaAreasDeViagem(),
+    Default = "Hub",
+    Searchable = true,
+    Callback = function(id)
+        if id then S.portalAreaAtual = id end
+    end,
+})
+PortalBox:AddButton({
+    Text = "Viajar agora e iniciar farm",
+    Func = function()
+        local destino
+        for _, area in ipairs(Biomas) do
+            if area.id == S.portalAreaAtual and area.id ~= "Torre" then
+                destino = area
+                break
+            end
+        end
+        if not destino then
+            setStatus("Destino inválido", C.red)
+            return
+        end
+        if selecionarBioma then selecionarBioma(destino) end
+        S.torreFarmAtivo = false
+        S.torreAtivo = false
+        S.farmBiomaAtivo = true
+        atualizarEstadoFarm()
+        if iniciarPortalArea then
+            iniciarPortalArea(destino.id, true)
+        else
+            setStatus("Preparando sistema de portais...", C.blue)
+        end
+    end,
+})
+PortalBox:AddToggle("DexFarmAutoPortal", {
+    Text = "Auto entrar no portal",
+    Default = S.portalAutoViajar,
+    Callback = function(v) S.portalAutoViajar = v end,
+})
+
+TowerBox:AddToggle("DexFarmTorreAutoEntrar", {
+    Text = "Auto entrar",
+    Default = S.torreAutoEntrar,
+    Callback = function(v) S.torreAutoEntrar = v end,
+})
+TowerBox:AddToggle("DexFarmTorreAutoAdvance", {
+    Text = "Auto avançar andar",
+    Default = S.torreAutoAdvance,
+    Callback = function(v) S.torreAutoAdvance = v end,
+})
+TowerBox:AddToggle("DexFarmTorreAutoReviver", {
+    Text = "Auto reviver",
+    Default = S.torreAutoReviver,
+    Callback = function(v) S.torreAutoReviver = v end,
+})
+TowerFarmToggle = TowerBox:AddToggle("DexFarmTorreAtiva", {
+    Text = "Ativar farm da Torre",
+    Default = false,
+    Callback = function(ativado)
+        if sincronizandoToggles then return end
+        if ativado then
+            S.farmBiomaAtivo = false
+            S.biomaId = "Torre"
+            S.torreAtivo = false
+            S.torreFarmAtivo = true
+            atualizarEstadoFarm()
+            setStatus("Modo Torre · procurando entrada", C.purple)
+            SLab4:SetText("Torre Infinita · aguardando servidor")
+            atualizarTextoTorre("Torre Infinita · aguardando servidor")
+        else
+            S.torreFarmAtivo = false
+            S.torreAtivo = false
+            atualizarEstadoFarm()
+            setStatus("Farm da Torre desativado", C.dim)
+        end
+    end,
+})
+
+ConfigBox:AddLabel({
+    Text = "Interface fornecida pela Obsidian UI Library. Use RightControl no PC para alternar a janela.",
+    DoesWrap = true,
+})
+ConfigBox:AddButton({
+    Text = "Descarregar interface",
+    Func = function()
+        pcall(function() Library:Unload() end)
+    end,
+})
+
+setStatus = function(texto, cor)
+    local r, g, b = 241, 245, 249
+    if typeof(cor) == "Color3" then
+        r, g, b = math.floor(cor.R * 255), math.floor(cor.G * 255), math.floor(cor.B * 255)
+    end
+    SLab:SetText(string.format('<font color="rgb(%d,%d,%d)">●</font> %s', r, g, b, tostring(texto)))
+    SLab4:SetText(tostring(texto))
+end
+
+atualizarEstadoFarm = function()
     S.ativo = S.farmBiomaAtivo or S.torreFarmAtivo
+    sincronizandoToggles = true
+    if FarmBiomeToggle and FarmBiomeToggle.Value ~= S.farmBiomaAtivo then
+        FarmBiomeToggle:SetValue(S.farmBiomaAtivo)
+    end
+    if TowerFarmToggle and TowerFarmToggle.Value ~= S.torreFarmAtivo then
+        TowerFarmToggle:SetValue(S.torreFarmAtivo)
+    end
+    sincronizandoToggles = false
 
-    -- Ao desligar os dois modos de farm, restaura a velocidade padrão imediatamente.
     if not S.ativo then
         local ch = LP.Character
         local hum = ch and ch:FindFirstChildOfClass("Humanoid")
         if hum then hum.WalkSpeed = walkOriginal end
     end
-
-    if FarmBiomeBtn then
-        FarmBiomeBtn.Text = S.farmBiomaAtivo and "■  DESATIVAR FARM DO BIOMA" or "▶  ATIVAR FARM DO BIOMA"
-        FarmBiomeBtn.TextColor3 = S.farmBiomaAtivo and C.red or C.green
-        FarmBiomeBtn.BackgroundColor3 = S.farmBiomaAtivo and Color3.fromRGB(58, 34, 36) or C.card
-    end
-    if TowerFarmBtn then
-        TowerFarmBtn.Text = S.torreFarmAtivo and "■  DESATIVAR FARM DA TORRE" or "▶  ATIVAR FARM DA TORRE"
-        TowerFarmBtn.TextColor3 = S.torreFarmAtivo and C.red or C.purple
-        TowerFarmBtn.BackgroundColor3 = S.torreFarmAtivo and Color3.fromRGB(58, 34, 36) or C.card
-    end
 end
 
-local function selecionarBioma(bioma)
+selecionarBioma = function(bioma)
     local biomaAnterior = S.biomaId
     S.biomaId = bioma.id
 
@@ -714,54 +605,48 @@ local function selecionarBioma(bioma)
         atualizarEstadoFarm()
     end
 
-    AreaInfo.Text = bioma.nome .. "  ·  " .. bioma.nivel
-    for _, child in ipairs(MonsterHost:GetChildren()) do child:Destroy() end
+    sincronizandoArea = true
+    if AreaDropdown then AreaDropdown:SetValue(bioma.id) end
+    sincronizandoArea = false
+    AreaInfo:SetText(bioma.nome .. " · " .. bioma.nivel)
 
     local lista = obterListaBioma(bioma)
     if #lista == 0 then
-        local info = Instance.new("TextLabel")
-        info.Size = UDim2.new(1, -16, 1, 0)
-        info.Position = UDim2.fromOffset(8, 0)
-        info.BackgroundTransparency = 1
-        info.Text = bioma.id == "Torre" and "Ondas dinâmicas · usa DadosTorre" or "Nenhuma criatura disponível nos DadosMonstros"
-        info.TextColor3 = C.gold
-        info.TextSize = 11
-        info.Font = FM
-        info.TextXAlignment = Enum.TextXAlignment.Left
-        info.Parent = MonsterHost
-        return
+        MonsterDropdown:SetVisible(false)
+        CreatureInfo:SetText(bioma.id == "Torre"
+            and "A Torre usa as ondas dinâmicas do sistema de torre."
+            or "Nenhuma criatura foi definida para esta área.")
+    else
+        local valores = {}
+        local achouSelecionado = false
+        for _, criatura in ipairs(lista) do
+            valores[criatura.id] = criatura.nome
+            if criatura.id == S.monstroId then achouSelecionado = true end
+        end
+        if not achouSelecionado then
+            S.monstroId = lista[1].id
+            S.monstroNome = lista[1].nome
+        end
+        sincronizandoCriatura = true
+        MonsterDropdown:SetValues(valores)
+        MonsterDropdown:SetValue(S.monstroId)
+        MonsterDropdown:SetVisible(true)
+        sincronizandoCriatura = false
+        CreatureInfo:SetText("Alvo atual: " .. S.monstroNome)
     end
 
-    local achouSelecionado = false
-    for _, criatura in ipairs(lista) do
-        if criatura.id == S.monstroId then achouSelecionado = true end
-    end
-    if not achouSelecionado then
-        S.monstroId = lista[1].id
-        S.monstroNome = lista[1].nome
-    end
-    dropdown(MonsterHost, "Criatura", lista, S.monstroNome, function(id, nome)
-        S.monstroId = id
-        S.monstroNome = nome
-    end)
-
-    -- Se o farm já está ativo, trocar de aba também deve reiniciar a viagem
-    -- para a área escolhida. Antes, o loop cancelava o portal antigo, mas não
-    -- solicitava um novo, deixando o farm procurando criaturas em outra área.
     if S.farmBiomaAtivo and biomaAnterior ~= bioma.id then
-        -- Invalida qualquer MoveTo antigo (combate ou portal) antes de trocar de área.
         S.movimentoToken = S.movimentoToken + 1
         local ch = LP.Character
         local hum = ch and ch:FindFirstChildOfClass("Humanoid")
         local root = ch and ch:FindFirstChild("HumanoidRootPart")
         if hum and root then hum:MoveTo(root.Position) end
 
-        -- Pausa o combate imediatamente até terminar a nova viagem.
         S.portalEmCurso = true
         S.portalAreaAtual = bioma.id
         S.alvoAtual = "viajando para " .. bioma.id
         setStatus("Trocando para " .. bioma.nome .. "...", C.blue)
-        SLab4.Text = "Cancelando o movimento anterior e solicitando novo portal"
+        SLab4:SetText("Cancelando o movimento anterior e solicitando novo portal")
         task.defer(function()
             if S.farmBiomaAtivo and S.biomaId == bioma.id and iniciarPortalArea then
                 iniciarPortalArea(bioma.id, true)
@@ -770,350 +655,10 @@ local function selecionarBioma(bioma)
     end
 end
 
-for i, bioma in ipairs(Biomas) do
-    local Tab = Instance.new("TextButton")
-    Tab.Size = UDim2.fromOffset(116, 30)
-    Tab.BackgroundColor3 = i == 1 and C.blue or C.card2
-    Tab.BorderSizePixel = 0
-    Tab.Text = bioma.id
-    Tab.TextColor3 = C.text
-    Tab.TextSize = 11
-    Tab.Font = FB
-    Tab.AutoButtonColor = false
-    Tab.LayoutOrder = i
-    Tab.Parent = AreaTabs
-    corner(Tab, 8)
-    stroke(Tab, C.stroke, 1)
-    Tab.Activated:Connect(function()
-        for _, sibling in ipairs(AreaTabs:GetChildren()) do
-            if sibling:IsA("TextButton") then sibling.BackgroundColor3 = sibling == Tab and C.blue or C.card2 end
-        end
-        selecionarBioma(bioma)
-    end)
-end
 selecionarBioma(Biomas[1])
-
-FarmBiomeBtn = botao(BoxFarm, "▶  ATIVAR FARM DO BIOMA", C.green, function()
-    if S.farmBiomaAtivo then
-        S.farmBiomaAtivo = false
-        S.portalEmCurso = false
-        atualizarEstadoFarm()
-        setStatus("Farm do bioma desativado", C.dim)
-        return
-    end
-    if S.biomaId == "Torre" then
-        setStatus("Selecione um bioma para farmar", C.orange)
-        return
-    end
-    S.torreFarmAtivo = false
-    S.torreAtivo = false
-    S.farmBiomaAtivo = true
-    atualizarEstadoFarm()
-    if S.biomaId ~= "Hub" then
-        if iniciarPortalArea then
-            iniciarPortalArea(S.biomaId, false)
-        else
-            setStatus("Preparando portal...", C.blue)
-        end
-    else
-        S.portalEmCurso = false
-        setStatus("Farm do bioma: " .. tostring(S.biomaId), C.green)
-    end
-end)
-slider(BoxFarm, "Distância", 3, 12, S.distancia, function(v) S.distancia = v end)
-local BoxMov = secao("Movimento", 108)
-toggle(BoxMov, "Boost de Velocidade", S.walkBoost, function(v)
-    S.walkBoost = v
-    local ch = LP.Character
-    if ch then
-        local h = ch:FindFirstChildOfClass("Humanoid")
-        if h then h.WalkSpeed = v and S.walkSpeed or walkOriginal end
-    end
-end)
-slider(BoxMov, "WalkSpeed", 16, 250, S.walkSpeed, function(v)
-    S.walkSpeed = v
-    if S.walkBoost then
-        local ch = LP.Character
-        if ch then
-            local h = ch:FindFirstChildOfClass("Humanoid")
-            if h then h.WalkSpeed = v end
-        end
-    end
-end)
-
-local BoxCombate = secao("Combate", 108)
-toggle(BoxCombate, "Auto Ataque", S.autoAtaque, function(v) S.autoAtaque = v end)
-toggle(BoxCombate, "Travar Mira", S.travarMira, function(v) S.travarMira = v end)
-
-local BoxColeta = secao("Coleta", 108)
-toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
-slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
-
--- ============================================================
--- SEÇÃO: INVENTÁRIO
--- ============================================================
-local BoxInv = secao("Inventário", 322)
-toggle(BoxInv, "Auto Equipar Melhores", S.autoEquipar, function(v) S.autoEquipar = v end)
-toggle(BoxInv, "Auto Limpar Repetidos", S.autoLimpar, function(v) S.autoLimpar = v end)
-toggle(BoxInv, "Auto Vender Ruins", S.autoVenderAte, function(v) S.autoVenderAte = v end)
-toggle(BoxInv, "Auto Evoluir Iguais", S.autoEvoluir, function(v) S.autoEvoluir = v end)
-toggle(BoxInv, "Auto Craftar Só Melhorias", S.autoCraftMelhores, function(v) S.autoCraftMelhores = v end)
-slider(BoxInv, "Intervalo (s)", 15, 180, S.intervaloInv, function(v) S.intervaloInv = math.floor(v + 0.5) end)
-dropdown(BoxInv, "Vender até", {
-    { id = 1, nome = "Só Básicos" },
-    { id = 2, nome = "Até Raros" },
-    { id = 3, nome = "Até Épicos" },
-}, "Até Raros", function(id)
-    S.raridadeVender = id
-end)
-
-local BoxInvStats = secao("Economia", 92)
-local StatMoedas = Instance.new("TextLabel")
-StatMoedas.Size = UDim2.new(1, -32, 0, 20)
-StatMoedas.Position = UDim2.fromOffset(16, 6)
-StatMoedas.BackgroundTransparency = 1
-StatMoedas.Text = "Moedas ganhas: 0"
-StatMoedas.TextColor3 = C.gold
-StatMoedas.TextSize = 13
-StatMoedas.Font = FM
-StatMoedas.TextXAlignment = Enum.TextXAlignment.Left
-StatMoedas.Parent = BoxInvStats
-
-local StatItens = Instance.new("TextLabel")
-StatItens.Size = UDim2.new(1, -32, 0, 20)
-StatItens.Position = UDim2.fromOffset(16, 28)
-StatItens.BackgroundTransparency = 1
-StatItens.Text = "Itens vendidos: 0"
-StatItens.TextColor3 = C.text
-StatItens.TextSize = 13
-StatItens.Font = FM
-StatItens.TextXAlignment = Enum.TextXAlignment.Left
-StatItens.Parent = BoxInvStats
-
-local StatEquip = Instance.new("TextLabel")
-StatEquip.Size = UDim2.new(1, -32, 0, 20)
-StatEquip.Position = UDim2.fromOffset(16, 50)
-StatEquip.BackgroundTransparency = 1
-StatEquip.Text = "Equipamentos trocados: 0"
-StatEquip.TextColor3 = C.purple
-StatEquip.TextSize = 13
-StatEquip.Font = FM
-StatEquip.TextXAlignment = Enum.TextXAlignment.Left
-StatEquip.Parent = BoxInvStats
-
-local BoxInvBtn = secao("Ações Rápidas", 148)
-botao(BoxInvBtn, "EQUIPAR AGORA", C.purple, function()
-    if equiparMelhores then equiparMelhores() end
-    task.wait(1.2)
-    if sincronizarInv then sincronizarInv() end
-end)
-botao(BoxInvBtn, "LIMPAR REPETIDOS", C.gold, function()
-    if limparRepetidos then limparRepetidos() end
-    task.wait(1.2)
-    if sincronizarInv then sincronizarInv() end
-end)
-botao(BoxInvBtn, "VENDER RUINS", C.orange, function()
-    if venderAte then venderAte(S.raridadeVender) end
-    task.wait(1.2)
-    if sincronizarInv then sincronizarInv() end
-end)
-
--- Portais: viajar manualmente ou iniciar a viagem ao ativar o farm da área.
-local BoxPortal = secao("Viajar para Área", 150)
-local areasList = {}
-for _, area in ipairs(Biomas) do
-    if area.id ~= "Torre" then
-        table.insert(areasList, { id = area.id, nome = area.nome })
-    end
-end
-dropdown(BoxPortal, "Destino", areasList, Biomas[1].nome, function(id)
-    S.portalAreaAtual = id
-end)
-botao(BoxPortal, "VIAJAR AGORA", C.blue, function()
-    local destino
-    for _, area in ipairs(Biomas) do
-        if area.id == S.portalAreaAtual and area.id ~= "Torre" then
-            destino = area
-            break
-        end
-    end
-    if not destino then
-        setStatus("Destino inválido", C.red)
-        return
-    end
-    selecionarBioma(destino)
-    S.torreFarmAtivo = false
-    S.torreAtivo = false
-    S.farmBiomaAtivo = true
-    atualizarEstadoFarm()
-    if iniciarPortalArea then
-        iniciarPortalArea(destino.id, true)
-    else
-        setStatus("Preparando sistema de portais...", C.blue)
-    end
-end)
-toggle(BoxPortal, "Auto Entrar no Portal", S.portalAutoViajar, function(v)
-    S.portalAutoViajar = v
-end)
-
--- Torre Infinita (altura suficiente para os três controles)
-local BoxTorre = secao("Torre Infinita", 200)
-toggle(BoxTorre, "Auto Entrar", S.torreAutoEntrar, function(v) S.torreAutoEntrar = v end)
-toggle(BoxTorre, "Auto Avançar Andar", S.torreAutoAdvance, function(v) S.torreAutoAdvance = v end)
-toggle(BoxTorre, "Auto Reviver", S.torreAutoReviver, function(v) S.torreAutoReviver = v end)
-TowerFarmBtn = botao(BoxTorre, "▶  ATIVAR FARM DA TORRE", C.purple, function()
-    if S.torreFarmAtivo then
-        S.torreFarmAtivo = false
-        S.torreAtivo = false
-        atualizarEstadoFarm()
-        setStatus("Farm da Torre desativado", C.dim)
-        return
-    end
-    S.farmBiomaAtivo = false
-    S.biomaId = "Torre"
-    S.torreAtivo = false
-    S.torreFarmAtivo = true
-    atualizarEstadoFarm()
-    setStatus("Modo Torre · procurando entrada", C.purple)
-    SLab4.Text = "Torre Infinita · aguardando servidor"
-end)
 atualizarEstadoFarm()
 
--- Status
-local StatusBox = Instance.new("Frame")
-StatusBox.Size = UDim2.new(1, -8, 0, 86)
-StatusBox.BackgroundColor3 = C.card
-StatusBox.BorderSizePixel = 0
-StatusBox.LayoutOrder = 100
-StatusBox.Parent = Scroll
-corner(StatusBox, 12)
-stroke(StatusBox, C.stroke, 1)
-
-local SDot = Instance.new("Frame")
-SDot.Size = UDim2.fromOffset(8, 8)
-SDot.Position = UDim2.fromOffset(16, 16)
-SDot.BackgroundColor3 = C.red
-SDot.BorderSizePixel = 0
-SDot.Parent = StatusBox
-corner(SDot, 4)
-
-local SLab = Instance.new("TextLabel")
-SLab.Size = UDim2.new(1, -40, 0, 16)
-SLab.Position = UDim2.fromOffset(30, 12)
-SLab.BackgroundTransparency = 1
-SLab.Text = "Inativo"
-SLab.TextColor3 = C.text
-SLab.TextSize = 13
-SLab.Font = FB
-SLab.TextXAlignment = Enum.TextXAlignment.Left
-SLab.Parent = StatusBox
-
-local SLab2 = Instance.new("TextLabel")
-SLab2.Size = UDim2.new(1, -32, 0, 16)
-SLab2.Position = UDim2.fromOffset(16, 34)
-SLab2.BackgroundTransparency = 1
-SLab2.Text = "Abates: 0 · Núcleos: 0"
-SLab2.TextColor3 = C.dim
-SLab2.TextSize = 11
-SLab2.Font = F
-SLab2.TextXAlignment = Enum.TextXAlignment.Left
-SLab2.Parent = StatusBox
-
-local SLab3 = Instance.new("TextLabel")
-SLab3.Size = UDim2.new(1, -32, 0, 16)
-SLab3.Position = UDim2.fromOffset(16, 50)
-SLab3.BackgroundTransparency = 1
-SLab3.Text = "Alvo: nenhum"
-SLab3.TextColor3 = C.dim
-SLab3.TextSize = 11
-SLab3.Font = F
-SLab3.TextXAlignment = Enum.TextXAlignment.Left
-SLab3.Parent = StatusBox
-
-SLab4 = Instance.new("TextLabel")
-SLab4.Size = UDim2.new(1, -32, 0, 16)
-SLab4.Position = UDim2.fromOffset(16, 66)
-SLab4.BackgroundTransparency = 1
-SLab4.Text = ""
-SLab4.TextColor3 = C.gold
-SLab4.TextSize = 11
-SLab4.Font = FM
-SLab4.TextXAlignment = Enum.TextXAlignment.Left
-SLab4.Parent = StatusBox
-
--- Os modos agora são controlados pelos botões dentro de cada menu.
--- Não existe mais um botão global que inicia o farm errado.
-
--- ============================================================
--- DRAG
--- ============================================================
-local drag, ds, sp
-Header.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        drag = true; ds = i.Position; sp = Main.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local d = i.Position - ds
-        Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        drag = false
-    end
-end)
-
--- ============================================================
--- MINIMIZAR / FECHAR
--- ============================================================
-local min = false
-local alturaConteudo = H
-
-local function ajustarAlturaConteudo()
-    -- O painel acompanha o conteúdo: recolher seções também remove o espaço vazio.
-    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + (isMobile and 68 or 82), isMobile and 270 or 230, H)
-    alturaConteudo = alturaDesejada
-    if not min then
-        TweenService:Create(Main, TweenInfo.new(0.16, Enum.EasingStyle.Quart), {
-            Size = UDim2.fromOffset(W, alturaConteudo),
-            Position = UDim2.new(0.5, -W / 2, 0.5, -alturaConteudo / 2)
-        }):Play()
-    end
-end
-
-Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(ajustarAlturaConteudo)
-task.defer(ajustarAlturaConteudo)
-
-MinBtn.Activated:Connect(function()
-    min = not min
-    Scroll.Visible = not min
-    local novaAltura = min and 54 or alturaConteudo
-    TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-        Size = UDim2.fromOffset(W, novaAltura),
-        Position = UDim2.new(0.5, -W / 2, 0.5, -novaAltura / 2)
-    }):Play()
-    MinBtn.Text = min and "+" or "−"
-end)
-
-CloseBtn.Activated:Connect(function()
-    S.ativo = false
-    S.farmBiomaAtivo = false
-    S.torreFarmAtivo = false
-    S.torreAtivo = false
-    local ch = LP.Character
-    if ch then
-        local h = ch:FindFirstChildOfClass("Humanoid")
-        if h then h.WalkSpeed = walkOriginal end
-    end
-    GUI:Destroy()
-    DropGui:Destroy()
-end)
-
--- ============================================================
--- FUNÇÕES DE JOGO
--- ============================================================
+-- A lógica do jogo continua abaixo, separada da construção visual.
 local function getChar()
     local ch = LP.Character
     if not ch or not ch:FindFirstChild("HumanoidRootPart") then return nil end
@@ -1257,7 +802,7 @@ iniciarPortalArea = function(areaId, forcar)
         S.portalEmCurso = false
         S.portalAreaAtual = "Hub"
         setStatus("Farm do Hub iniciado", C.green)
-        SLab4.Text = ""
+        SLab4:SetText("")
         return true
     end
     if not PortalEvento or not PortalEvento:IsA("RemoteEvent") then
@@ -1265,7 +810,7 @@ iniciarPortalArea = function(areaId, forcar)
         S.farmBiomaAtivo = false
         atualizarEstadoFarm()
         setStatus("Erro: PortalEvento indisponível", C.red)
-        SLab4.Text = "Não foi possível solicitar o portal"
+        SLab4:SetText("Não foi possível solicitar o portal")
         return false
     end
     if LP:GetAttribute("Liberada_" .. areaId) == false then
@@ -1273,7 +818,7 @@ iniciarPortalArea = function(areaId, forcar)
         S.farmBiomaAtivo = false
         atualizarEstadoFarm()
         setStatus("Área bloqueada: " .. tostring(areaId), C.red)
-        SLab4.Text = "Desbloqueie a área antes de viajar"
+        SLab4:SetText("Desbloqueie a área antes de viajar")
         return false
     end
 
@@ -1284,7 +829,7 @@ iniciarPortalArea = function(areaId, forcar)
     portalAvisouChegou = false
     portalAguardandoDesde = 0
     setStatus("Solicitando portal para " .. tostring(areaId) .. "...", C.blue)
-    SLab4.Text = "Aguardando o portal aparecer"
+    SLab4:SetText("Aguardando o portal aparecer")
     local ok = pcall(function()
         PortalEvento:FireServer("Abrir", areaId)
     end)
@@ -1317,7 +862,7 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
                 portalAtual = nil
                 portalAguardandoDesde = 0
                 setStatus("Chegou em " .. tostring(areaId or S.biomaId), C.green)
-                SLab4.Text = "Farm iniciado em " .. tostring(areaId or S.biomaId)
+                SLab4:SetText("Farm iniciado em " .. tostring(areaId or S.biomaId))
             end
         elseif acao == "Erro" then
             -- Não deixa erro atrasado do portal antigo cancelar a nova área.
@@ -1327,7 +872,7 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
             atualizarEstadoFarm()
             portalAtual = nil
             setStatus("Erro no portal: " .. tostring(areaId), C.red)
-            SLab4.Text = "Verifique se a área está liberada"
+            SLab4:SetText("Verifique se a área está liberada")
         end
     end)
 end
@@ -1345,7 +890,7 @@ task.spawn(function()
         end
         if not S.portalAutoViajar then
             setStatus("Portal aberto · entrada automática pausada", C.orange)
-            SLab4.Text = "Ative Auto Entrar no Portal para continuar"
+            SLab4:SetText("Ative Auto Entrar no Portal para continuar")
             continue
         end
 
@@ -1362,10 +907,10 @@ task.spawn(function()
                     S.farmBiomaAtivo = false
                     atualizarEstadoFarm()
                     setStatus("Portal não encontrado", C.red)
-                    SLab4.Text = "Tente ativar o farm novamente"
+                    SLab4:SetText("Tente ativar o farm novamente")
                 else
                     setStatus("Aguardando portal de " .. tostring(S.biomaId), C.blue)
-                    SLab4.Text = "O portal pode levar alguns instantes para aparecer"
+                    SLab4:SetText("O portal pode levar alguns instantes para aparecer")
                 end
                 continue
             end
@@ -1390,13 +935,13 @@ task.spawn(function()
         local distanciaPortal = (hrp.Position - pos).Magnitude
         if distanciaPortal > math.max(prompt.MaxActivationDistance - 1, 5) then
             setStatus("Indo até o portal...", C.blue)
-            SLab4.Text = "Destino: " .. tostring(S.biomaId) .. " · " .. math.floor(distanciaPortal) .. " studs"
+            SLab4:SetText("Destino: " .. tostring(S.biomaId) .. " · " .. math.floor(distanciaPortal) .. " studs")
             andarAte(Vector3.new(pos.X, hrp.Position.Y, pos.Z), 4)
             continue
         end
 
         setStatus("Entrando no portal...", C.blue)
-        SLab4.Text = "Ativando Entrada · " .. tostring(S.biomaId)
+        SLab4:SetText("Ativando Entrada · " .. tostring(S.biomaId))
         if not portalAvisouChegou then
             portalAvisouChegou = true
             pcall(function() PortalEvento:FireServer("Chegou", S.biomaId) end)
@@ -1408,7 +953,7 @@ task.spawn(function()
             S.farmBiomaAtivo = false
             atualizarEstadoFarm()
             setStatus("Entrada não confirmada", C.red)
-            SLab4.Text = "O servidor não confirmou a viagem"
+            SLab4:SetText("O servidor não confirmou a viagem")
         end
         task.wait(0.8)
     end
@@ -1537,8 +1082,8 @@ end
 -- LOOP
 -- ============================================================
 setStatus = function(texto, cor)
-    SLab.Text = texto
-    SLab.TextColor3 = cor or C.text
+    SLab:SetText(texto)
+
 end
 
 local ultimoAtaque = 0
@@ -1568,13 +1113,13 @@ spawn(function()
             local n, dn = acharNucleoPerto()
             if n and dn then
                 setStatus("Coletando núcleo...", C.gold)
-                SLab4.Text = "→ " .. n.Name
+                SLab4:SetText("→ " .. n.Name)
                 local nomeItem = n.Name
                 coletarNucleo(n)
                 task.wait(0.2)
                 if not n.Parent or not n:IsDescendantOf(workspace) then
                     S.coletados = S.coletados + 1
-                    SLab4.Text = "✔ " .. nomeItem
+                    SLab4:SetText("✔ " .. nomeItem)
                 else
                     -- Mesmo que o prompt não gere erro, aproximamos e tentamos novamente.
                     -- Isso evita confundir chamada local bem-sucedida com coleta confirmada.
@@ -1623,7 +1168,7 @@ spawn(function()
         local dist = (ap - mp).Magnitude
         S.alvoAtual = alvoAtual.Name
         setStatus("Farmando: " .. alvoAtual.Name, C.green)
-        SLab4.Text = ""
+        SLab4:SetText("")
 
         if dist > S.distancia + 1 then
             local offset = (mp - ap)
@@ -1645,16 +1190,15 @@ end)
 spawn(function()
     while GUI.Parent do
         task.wait(0.3)
-        SLab2.Text = string.format("Abates: %d · Núcleos: %d", S.abates, S.coletados)
-        SLab3.Text = "Alvo: " .. S.alvoAtual
+        SLab2:SetText(string.format("Abates: %d · Núcleos: %d", S.abates, S.coletados))
+        SLab3:SetText("Alvo: " .. S.alvoAtual)
     end
 end)
 
--- Estado visual do indicador, independente do modo selecionado.
+-- Garante a restauração da velocidade quando os modos de farm estão desligados.
 task.spawn(function()
-    while GUI.Parent do
+    while GUI and GUI.Parent do
         task.wait(0.2)
-        SDot.BackgroundColor3 = S.ativo and C.green or C.red
         if not S.ativo then
             local ch = LP.Character
             if ch then
@@ -1664,6 +1208,7 @@ task.spawn(function()
         end
     end
 end)
+
 
 LP:GetAttributeChangedSignal("NaTorre"):Connect(function()
     if LP:GetAttribute("NaTorre") == true then
@@ -1699,12 +1244,12 @@ if TorreEvento and TorreEvento:IsA("RemoteEvent") then
             S.torreAndar = dados.Andar or 0
             local tipo = dados.Chefe and "CHEFE" or (dados.Elite and "ELITE" or "normal")
             setStatus("Torre A" .. S.torreAndar .. " [" .. tipo .. "]", C.purple)
-            SLab4.Text = "Andar " .. S.torreAndar .. " · " .. tipo
+            SLab4:SetText("Andar " .. S.torreAndar .. " · " .. tipo)
 
         elseif acao == "Restantes" then
             -- Evento de estado recebido; o servidor continua sendo a fonte da verdade.
             if S.torreAtivo and type(dados) == "table" and dados.Quantidade ~= nil then
-                SLab4.Text = "Andar " .. S.torreAndar .. " · Restantes: " .. tostring(dados.Quantidade)
+                SLab4:SetText("Andar " .. S.torreAndar .. " · Restantes: " .. tostring(dados.Quantidade))
             end
 
         elseif acao == "Intervalo" then
@@ -1815,7 +1360,7 @@ task.spawn(function()
         end
         if not TorreEvento or not TorreEvento:IsA("RemoteEvent") then
             setStatus("Erro: TorreEvento indisponível", C.red)
-            SLab4.Text = "Não é possível entrar na Torre"
+            SLab4:SetText("Não é possível entrar na Torre")
             task.wait(1)
             continue
         end
@@ -1837,7 +1382,7 @@ task.spawn(function()
                     local mp, ap = hrpPlayer.Position, hrp.Position
                     local d = (ap - mp).Magnitude
                     S.alvoAtual = "[Torre] " .. alvo.Name
-                    SLab4.Text = "Andar " .. S.torreAndar .. " · " .. alvo.Name
+                    SLab4:SetText("Andar " .. S.torreAndar .. " · " .. alvo.Name)
 
                     if d > S.distancia + 1 then
                         local offset = mp - ap
@@ -1855,7 +1400,7 @@ task.spawn(function()
                     end
                 end
             else
-                SLab4.Text = "Andar " .. S.torreAndar .. " · aguardando..."
+                SLab4:SetText("Andar " .. S.torreAndar .. " · aguardando...")
             end
         elseif S.torreAtivo then
             -- Já estava no modo Torre, mas o servidor informa que saiu.
@@ -1878,7 +1423,7 @@ task.spawn(function()
 
                 if hrp and pos and distanciaTorre and distanciaTorre > 10 then
                     setStatus("Indo até a Torre Infinita...", C.orange)
-                    SLab4.Text = (prompt and "Entrada localizada · " or "Indo para a zona · ") .. math.floor(distanciaTorre) .. " studs"
+                    SLab4:SetText((prompt and "Entrada localizada · " or "Indo para a zona · ") .. math.floor(distanciaTorre) .. " studs")
                     -- Igual ao farm do Hub: MoveTo em trechos curtos, recalculando até o destino.
                     andarAte(Vector3.new(pos.X, hrp.Position.Y, pos.Z), 4)
                     task.wait(0.15)
@@ -1886,7 +1431,7 @@ task.spawn(function()
                 end
 
                 setStatus("Chegou à Torre · solicitando entrada...", C.purple)
-                SLab4.Text = "Abrir → Entrar · aguardando confirmação"
+                SLab4:SetText("Abrir → Entrar · aguardando confirmação")
                 pcall(function() TorreEvento:FireServer("Abrir") end)
                 task.wait(0.45)
                 if LP:GetAttribute("NaTorre") ~= true then
@@ -1895,7 +1440,7 @@ task.spawn(function()
                 task.wait(2.5)
             else
                 setStatus("Auto Entrar desativado", C.orange)
-                SLab4.Text = "Ative Auto Entrar para iniciar a Torre"
+                SLab4:SetText("Ative Auto Entrar para iniciar a Torre")
                 task.wait(0.5)
             end
         end
@@ -1937,7 +1482,7 @@ if InventarioAtualizar and InventarioAtualizar:IsA("RemoteEvent") then
             end
         end
         if msg and msg ~= "" then
-            SLab4.Text = "⚙ " .. tostring(msg)
+            SLab4:SetText("⚙ " .. tostring(msg))
         end
     end)
 end
@@ -1968,34 +1513,34 @@ if CraftingEvento and CraftingEvento:IsA("RemoteEvent") then
             end
 
             if S.autoCraftMelhores and quantidade > 0 and ganho and ganho > 0 then
-                SLab4.Text = "Craft de melhorias: +" .. tostring(ganho) .. " de poder"
+                SLab4:SetText("Craft de melhorias: +" .. tostring(ganho) .. " de poder")
                 local ok, err = pcall(function()
                     CraftingEvento:FireServer("CraftarMelhores")
                 end)
                 if not ok then
                     S.craftEmCurso = false
-                    SLab4.Text = "Falha ao solicitar craft"
+                    SLab4:SetText("Falha ao solicitar craft")
                     warn("[DexFarm] Falha no craft: " .. tostring(err))
                 else
                     task.delay(20, function()
                         if S.craftEmCurso then
                             S.craftEmCurso = false
-                            SLab4.Text = "Craft: resposta do servidor não recebida"
+                            SLab4:SetText("Craft: resposta do servidor não recebida")
                         end
                     end)
                 end
             else
                 S.craftEmCurso = false
                 if S.autoCraftMelhores then
-                    SLab4.Text = "Craft ignorado: nenhuma melhoria de poder"
+                    SLab4:SetText("Craft ignorado: nenhuma melhoria de poder")
                 end
             end
         elseif acao == "ResultadoMelhores" then
             S.craftEmCurso = false
             if dados == true then
-                SLab4.Text = "Craft de melhorias concluído"
+                SLab4:SetText("Craft de melhorias concluído")
             elseif mensagem then
-                SLab4.Text = "Craft: " .. tostring(mensagem)
+                SLab4:SetText("Craft: " .. tostring(mensagem))
             end
         end
     end)
@@ -2015,7 +1560,7 @@ end
 local function acaoInventario(acao, ...)
     if not InventarioAcao or not InventarioAcao:IsA("RemoteEvent") then
         setStatus("Inventário indisponível", C.red)
-        SLab4.Text = "Remote InventarioAcao não encontrado"
+        SLab4:SetText("Remote InventarioAcao não encontrado")
         return false
     end
     local argumentos = {...}
@@ -2024,7 +1569,7 @@ local function acaoInventario(acao, ...)
         InventarioAcao:FireServer(acao, unpackArgs(argumentos))
     end)
     if not ok then
-        SLab4.Text = "Falha na ação: " .. tostring(err)
+        SLab4:SetText("Falha na ação: " .. tostring(err))
         return false
     end
     return true
@@ -2032,13 +1577,13 @@ end
 
 equiparMelhores = function()
     setStatus("Equipando melhores...", C.purple)
-    SLab4.Text = "Auto-equip"
+    SLab4:SetText("Auto-equip")
     return acaoInventario("EquiparMelhores", "equipamento")
 end
 
 limparRepetidos = function()
     setStatus("Limpando repetidos...", C.gold)
-    SLab4.Text = "Limpando repetidos"
+    SLab4:SetText("Limpando repetidos")
     return acaoInventario("LimparRepetidos")
 end
 
@@ -2046,7 +1591,7 @@ venderAte = function(raridade)
     raridade = math.clamp(math.floor(tonumber(raridade) or 1), 1, 3)
     local nomes = { "Básicos", "Raros", "Épicos" }
     setStatus("Vendendo " .. nomes[raridade] .. "...", C.gold)
-    SLab4.Text = "Vendendo até: " .. nomes[raridade]
+    SLab4:SetText("Vendendo até: " .. nomes[raridade])
     return acaoInventario("VenderAte", raridade)
 end
 
@@ -2134,7 +1679,7 @@ task.spawn(function()
                 S.equipamentos = S.equipamentos + 1
             end
             setStatus("Farmando...", C.green)
-            SLab4.Text = ""
+            SLab4:SetText("")
 
             -- Planeja no fim do ciclo para não competir com limpeza/venda/equipamento.
             local agoraCraft = os.clock()
@@ -2166,7 +1711,7 @@ task.spawn(function()
         end)
         if not okCiclo then
             warn("[DexFarm] Erro no ciclo de inventário: " .. tostring(errCiclo))
-            SLab4.Text = "Erro no inventário; ciclo seguinte tentará novamente"
+            SLab4:SetText("Erro no inventário; ciclo seguinte tentará novamente")
         end
         inventarioCicloEmCurso = false
     end
@@ -2175,9 +1720,9 @@ end)
 task.spawn(function()
     while GUI.Parent do
         task.wait(0.5)
-        StatMoedas.Text = "Moedas ganhas: " .. tostring(S.moedasVendidas)
-        StatItens.Text = "Itens vendidos: " .. tostring(S.itensVendidos)
-        StatEquip.Text = "Equipamentos trocados: " .. tostring(S.equipamentos)
+        StatMoedas:SetText("Moedas ganhas: " .. tostring(S.moedasVendidas))
+        StatItens:SetText("Itens vendidos: " .. tostring(S.itensVendidos))
+        StatEquip:SetText("Equipamentos trocados: " .. tostring(S.equipamentos))
     end
 end)
 
