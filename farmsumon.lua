@@ -1815,8 +1815,10 @@ local function acaoInventario(acao, ...)
         SLab4.Text = "Remote InventarioAcao não encontrado"
         return false
     end
+    local argumentos = {...}
+    local unpackArgs = table.unpack or unpack
     local ok, err = pcall(function()
-        InventarioAcao:FireServer(acao, ...)
+        InventarioAcao:FireServer(acao, unpackArgs(argumentos))
     end)
     if not ok then
         SLab4.Text = "Falha na ação: " .. tostring(err)
