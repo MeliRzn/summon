@@ -666,15 +666,19 @@ local function atualizarEstadoFarm()
 end
 
 local function selecionarBioma(bioma)
+    local biomaAnterior = S.biomaId
     S.biomaId = bioma.id
+
     if bioma.id == "Torre" and S.farmBiomaAtivo then
         S.farmBiomaAtivo = false
+        S.portalEmCurso = false
         atualizarEstadoFarm()
     elseif bioma.id ~= "Torre" and S.torreFarmAtivo then
         S.torreFarmAtivo = false
         S.torreAtivo = false
         atualizarEstadoFarm()
     end
+
     AreaInfo.Text = bioma.nome .. "  ·  " .. bioma.nivel
     for _, child in ipairs(MonsterHost:GetChildren()) do child:Destroy() end
 
@@ -705,6 +709,18 @@ local function selecionarBioma(bioma)
         S.monstroId = id
         S.monstroNome = nome
     end)
+
+    -- Se o farm já está ativo, trocar de aba também deve reiniciar a viagem
+    -- para a área escolhida. Antes, o loop cancelava o portal antigo, mas não
+    -- solicitava um novo, deixando o farm procurando criaturas em outra área.
+    if S.farmBiomaAtivo and biomaAnterior ~= bioma.id then
+        S.portalEmCurso = false
+        task.defer(function()
+            if S.farmBiomaAtivo and S.biomaId == bioma.id and iniciarPortalArea then
+                iniciarPortalArea(bioma.id, true)
+            end
+        end)
+    end
 end
 
 for i, bioma in ipairs(Biomas) do
