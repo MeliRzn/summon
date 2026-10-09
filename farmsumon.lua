@@ -1070,7 +1070,7 @@ local function ativarEntradaPortal(prompt)
     if not prompt or not prompt.Parent then return false end
     if type(fireproximityprompt) == "function" then
         local ok = pcall(function()
-            fireproximityprompt(prompt, math.max(prompt.HoldDuration, 0.5))
+            fireproximityprompt(prompt)
         end)
         if ok then return true end
     end
@@ -1099,6 +1099,8 @@ iniciarPortalArea = function(areaId, forcar)
     end
     if not PortalEvento or not PortalEvento:IsA("RemoteEvent") then
         S.portalEmCurso = false
+        S.farmBiomaAtivo = false
+        atualizarEstadoFarm()
         setStatus("Erro: PortalEvento indisponível", C.red)
         SLab4.Text = "Não foi possível solicitar o portal"
         return false
@@ -1125,6 +1127,8 @@ iniciarPortalArea = function(areaId, forcar)
     end)
     if not ok then
         S.portalEmCurso = false
+        S.farmBiomaAtivo = false
+        atualizarEstadoFarm()
         setStatus("Falha ao solicitar portal", C.red)
         return false
     end
@@ -1154,6 +1158,8 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
             end
         elseif acao == "Erro" then
             S.portalEmCurso = false
+            S.farmBiomaAtivo = false
+            atualizarEstadoFarm()
             portalAtual = nil
             setStatus("Erro no portal: " .. tostring(areaId), C.red)
             SLab4.Text = "Verifique se a área está liberada"
@@ -1188,6 +1194,8 @@ task.spawn(function()
                 if portalAguardandoDesde == 0 then portalAguardandoDesde = os.clock() end
                 if os.clock() - portalAguardandoDesde > 28 then
                     S.portalEmCurso = false
+                    S.farmBiomaAtivo = false
+                    atualizarEstadoFarm()
                     setStatus("Portal não encontrado", C.red)
                     SLab4.Text = "Tente ativar o farm novamente"
                 else
@@ -1232,6 +1240,8 @@ task.spawn(function()
         if portalAguardandoDesde == 0 then portalAguardandoDesde = os.clock() end
         if os.clock() - portalAguardandoDesde > 10 then
             S.portalEmCurso = false
+            S.farmBiomaAtivo = false
+            atualizarEstadoFarm()
             setStatus("Entrada não confirmada", C.red)
             SLab4.Text = "O servidor não confirmou a viagem"
         end
