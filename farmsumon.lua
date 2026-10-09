@@ -1347,32 +1347,89 @@ local function atacar(alvo)
     end
 end
 
--- Coleta
+-- ============================================================
+-- COLETA PRIORITÁRIA: itens tagueados como ItemChao + fallback Nucleos
+-- ============================================================
+local function getPosicaoItem(item)
+    if not item or not item.Parent then return nil end
+    if item:IsA("BasePart") then
+        return item.Position
+    elseif item:IsA("Model") then
+        local pp = item.PrimaryPart
+        if pp then return pp.Position end
+        local ok, pivot = pcall(function() return item:GetPivot() end)
+        if ok and pivot then return pivot.Position end
+    elseif item:IsA("Attachment") then
+        return item.WorldPosition
+    end
+    local parte = item:FindFirstChildWhichIsA("BasePart", true)
+    return parte and parte.Position or nil
+end
+
 local function getNucleos()
+    local items, vistos = {}, {}
+    -- A tag encontra drops em qualquer pasta/parte do mapa, sem varrer toda a árvore.
+    for _, item in ipairs(CollectionService:GetTagged("ItemChao")) do
+        if item:IsDescendantOf(workspace) and not vistos[item] then
+            vistos[item] = true
+            table.insert(items, item)
+        end
+    end
+    -- Fallback para manter compatibilidade com núcleos que ainda não tenham a tag.
     local pasta = workspace:FindFirstChild("Nucleos")
-    if not pasta then return {} end
-    return pasta:GetChildren()
+    if pasta then
+        for _, item in ipairs(pasta:GetChildren()) do
+            if item:IsDescendantOf(workspace) and not vistos[item] then
+                vistos[item] = true
+                table.insert(items, item)
+            end
+        end
+    end
+    return items
 end
 
 local function acharNucleoPerto()
     local ch = getChar()
-    if not ch then return nil end
-    local mp = ch.HumanoidRootPart.Position
-    local melhor, mdist = nil, math.huge
-    for _, n in ipairs(getNucleos()) do
-        if n:IsA("Model") and n.PrimaryPart then
-            local d = (n.PrimaryPart.Position - mp).Magnitude
-            if d < mdist and d <= S.raioColeta then
-                mdist = d; melhor = n
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local mp = hrp.Position
+    local agora = workspace:GetServerTimeNow()
+    local melhor, melhorScore, melhorDist = nil, -math.huge, math.huge
+
+    for _, item in ipairs(getNucleos()) do
+        local pos = getPosicaoItem(item)
+        if pos then
+            local expira = tonumber(item:GetAttribute("ExpiraEm"))
+            local tempo = expira and (expira - agora) or (tonumber(item:GetAttribute("DuracaoTotal")) or 30)
+            -- Itens expirados não entram na seleção.
+            if tempo > 0 then
+                local dist = (pos - mp).Magnitude
+                if dist <= S.raioColeta then
+                    -- Urgência pesa mais que a distância para evitar perder drops.
+                    local urgencia = 0
+                    if tempo <= 5 then
+                        urgencia = 1000
+                    elseif tempo <= 10 then
+                        urgencia = 500
+                    elseif tempo <= 15 then
+                        urgencia = 200
+                    end
+                    local score = urgencia - dist
+                    if score > melhorScore then
+                        melhorScore, melhorDist, melhor = score, dist, item
+                    end
+                end
             end
         end
     end
-    return melhor, mdist
+    return melhor, melhorDist
 end
 
 local function getPromptNucleo(nucleo)
+    if not nucleo or not nucleo.Parent then return nil end
+    if nucleo:IsA("ProximityPrompt") then return nucleo end
     for _, d in ipairs(nucleo:GetDescendants()) do
-        if d:IsA("ProximityPrompt") then return d end
+        if d:IsA("ProximityPrompt") and d.Enabled then return d end
     end
     return nil
 end
@@ -1435,9 +1492,11 @@ spawn(function()
                     S.coletados = S.coletados + 1
                     SLab4.Text = "✔ " .. n.Name
                 elseif not ok then
-                    local pos = n.PrimaryPart and n.PrimaryPart.Position or n:GetPivot().Position
-                    andarAte(pos, 3)
-                    coletarNucleo(n)
+                    local pos = getPosicaoItem(n)
+                    if pos then
+                        andarAte(pos, 3)
+                        coletarNucleo(n)
+                    end
                 end
                 task.wait(0.1)
                 continue
@@ -1950,4 +2009,4 @@ task.spawn(function()
     end
 end)
 
-print("[DexFarm v5.6] Carregado!")
+print("[DexFarm v5.7] Carregado!")
