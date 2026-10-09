@@ -135,6 +135,14 @@ Header.BackgroundColor3 = C.card
 Header.BorderSizePixel = 0
 Header.Parent = Main
 corner(Header, 18)
+local HeaderGradient = Instance.new("UIGradient")
+HeaderGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(23, 44, 88)),
+    ColorSequenceKeypoint.new(0.55, Color3.fromRGB(24, 34, 65)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(64, 31, 103)),
+})
+HeaderGradient.Rotation = 0
+HeaderGradient.Parent = Header
 
 local HFix = Instance.new("Frame")
 HFix.Size = UDim2.new(1, 0, 0, 18)
@@ -425,6 +433,8 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
     R.BackgroundTransparency = 1
     R.Parent = parent
 
+    local larguraBotao = math.clamp((parent.AbsoluteSize.X > 0 and parent.AbsoluteSize.X or 280) * 0.56, 122, 170)
+
     local L = Instance.new("TextLabel")
     L.Size = UDim2.new(1, -larguraBotao - 28, 1, 0)
     L.Position = UDim2.fromOffset(14, 0)
@@ -437,7 +447,6 @@ local function dropdown(parent, texto, opcoes, defaultNome, cb)
     L.Parent = R
 
     local Btn = Instance.new("TextButton")
-    local larguraBotao = math.clamp((R.AbsoluteSize.X > 0 and R.AbsoluteSize.X or 280) * 0.56, 122, 170)
     Btn.Size = UDim2.fromOffset(larguraBotao, 32)
     Btn.Position = UDim2.new(1, -larguraBotao - 10, 0.5, -16)
     Btn.BackgroundColor3 = C.card2
@@ -730,6 +739,8 @@ local function selecionarBioma(bioma)
         S.portalEmCurso = true
         S.portalAreaAtual = bioma.id
         S.alvoAtual = "viajando para " .. bioma.id
+        setStatus("Trocando para " .. bioma.nome .. "...", C.blue)
+        SLab4.Text = "Cancelando o movimento anterior e solicitando novo portal"
         task.defer(function()
             if S.farmBiomaAtivo and S.biomaId == bioma.id and iniciarPortalArea then
                 iniciarPortalArea(bioma.id, true)
