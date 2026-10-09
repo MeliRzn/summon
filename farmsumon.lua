@@ -570,7 +570,6 @@ setStatus = function(texto, cor)
         r, g, b = math.floor(cor.R * 255), math.floor(cor.G * 255), math.floor(cor.B * 255)
     end
     SLab:SetText(string.format('<font color="rgb(%d,%d,%d)">●</font> %s', r, g, b, tostring(texto)))
-    SLab4:SetText(tostring(texto))
 end
 
 atualizarEstadoFarm = function()
@@ -1081,11 +1080,6 @@ end
 -- ============================================================
 -- LOOP
 -- ============================================================
-setStatus = function(texto, cor)
-    SLab:SetText(texto)
-
-end
-
 local ultimoAtaque = 0
 local alvoAtual = nil
 
@@ -1726,4 +1720,4 @@ task.spawn(function()
     end
 end)
 
-print("[DexFarm v5.8] Carregado!")
+print("[DexFarm v5.9] Carregado com Obsidian UI!")
