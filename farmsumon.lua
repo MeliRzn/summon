@@ -592,7 +592,7 @@ local function botao(parent, texto, cor, cb)
     B.MouseLeave:Connect(function()
         TweenService:Create(B, TweenInfo.new(0.2), { BackgroundColor3 = C.card }):Play()
     end)
-    if cb then B.MouseButton1Click:Connect(cb) end
+    if cb then B.Activated:Connect(cb) end
     return B
 end
 
