@@ -1182,6 +1182,8 @@ task.spawn(function()
             portalAtual = localizarPortalDoJogador()
             if portalAtual then
                 portalExpira = portalAtual:GetAttribute("ExpiraEm") or (workspace:GetServerTimeNow() + 30)
+                -- Reinicia o cronômetro: a espera pela criação não deve contar como falha de entrada.
+                portalAguardandoDesde = 0
             else
                 if portalAguardandoDesde == 0 then portalAguardandoDesde = os.clock() end
                 if os.clock() - portalAguardandoDesde > 28 then
