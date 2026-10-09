@@ -625,7 +625,8 @@ MonsterHost.Size = UDim2.new(1, 0, 0, 44)
 MonsterHost.BackgroundTransparency = 1
 MonsterHost.Parent = BoxFarm
 
-local FarmBiomeBtn, TowerFarmBtn
+local FarmBiomeBtn, TowerFarmBtn, SLab4
+local setStatus
 
 local function atualizarEstadoFarm()
     S.ativo = S.farmBiomaAtivo or S.torreFarmAtivo
@@ -826,7 +827,7 @@ SLab3.Font = F
 SLab3.TextXAlignment = Enum.TextXAlignment.Left
 SLab3.Parent = StatusBox
 
-local SLab4 = Instance.new("TextLabel")
+SLab4 = Instance.new("TextLabel")
 SLab4.Size = UDim2.new(1, -32, 0, 16)
 SLab4.Position = UDim2.fromOffset(16, 66)
 SLab4.BackgroundTransparency = 1
@@ -1012,7 +1013,7 @@ end
 -- ============================================================
 -- LOOP
 -- ============================================================
-local function setStatus(texto, cor)
+setStatus = function(texto, cor)
     SLab.Text = texto
     SLab.TextColor3 = cor or C.text
 end
@@ -1166,14 +1167,14 @@ if TorreEvento and TorreEvento:IsA("RemoteEvent") then
             end
 
         elseif acao == "Intervalo" then
-            if S.torreAutoAdvance and S.ativo then
+            if S.torreAutoAdvance and S.torreFarmAtivo then
                 task.wait(0.4)
                 pcall(function() TorreEvento:FireServer("Continuar") end)
                 setStatus("Avançando...", C.gold)
             end
 
         elseif acao == "Morreu" then
-            if S.torreAutoReviver and type(dados) == "table" and dados.PodeReviver then
+            if S.torreAutoReviver and S.torreFarmAtivo and type(dados) == "table" and dados.PodeReviver then
                 task.wait(0.8)
                 pcall(function() TorreEvento:FireServer("Reviver") end)
                 setStatus("Revivendo...", C.orange)
