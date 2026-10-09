@@ -48,6 +48,17 @@ local S = {
     abates = 0,
     coletados = 0,
     alvoAtual = "nenhum",
+    -- Inventário
+    autoEquipar = true,
+    autoLimpar = true,
+    autoVenderAte = true,
+    autoEvoluir = false,
+    intervaloInv = 45,
+    raridadeVender = 2,
+    ultimoInv = 0,
+    moedasVendidas = 0,
+    itensVendidos = 0,
+    equipamentos = 0,
     -- Portais de área
     portalAreaAtual = "Hub",
     portalAutoViajar = true,
@@ -60,6 +71,9 @@ local S = {
     torreAndar = 0,
 }
 local walkOriginal = 16
+
+-- Ações do inventário são declaradas antes da interface porque os botões as usam.
+local equiparMelhores, limparRepetidos, venderAte, sincronizarInv
 
 -- Limpa
 for _, g in pairs(LP.PlayerGui:GetChildren()) do
@@ -767,6 +781,74 @@ toggle(BoxCombate, "Travar Mira", S.travarMira, function(v) S.travarMira = v end
 local BoxColeta = secao("Coleta", 108)
 toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
 slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
+
+-- ============================================================
+-- SEÇÃO: INVENTÁRIO
+-- ============================================================
+local BoxInv = secao("Inventário", 280)
+toggle(BoxInv, "Auto Equipar Melhores", S.autoEquipar, function(v) S.autoEquipar = v end)
+toggle(BoxInv, "Auto Limpar Repetidos", S.autoLimpar, function(v) S.autoLimpar = v end)
+toggle(BoxInv, "Auto Vender Ruins", S.autoVenderAte, function(v) S.autoVenderAte = v end)
+toggle(BoxInv, "Auto Evoluir Iguais", S.autoEvoluir, function(v) S.autoEvoluir = v end)
+slider(BoxInv, "Intervalo (s)", 15, 180, S.intervaloInv, function(v) S.intervaloInv = math.floor(v + 0.5) end)
+dropdown(BoxInv, "Vender até", {
+    { id = 1, nome = "Só Básicos" },
+    { id = 2, nome = "Até Raros" },
+    { id = 3, nome = "Até Épicos" },
+}, "Até Raros", function(id)
+    S.raridadeVender = id
+end)
+
+local BoxInvStats = secao("Economia", 92)
+local StatMoedas = Instance.new("TextLabel")
+StatMoedas.Size = UDim2.new(1, -32, 0, 20)
+StatMoedas.Position = UDim2.fromOffset(16, 6)
+StatMoedas.BackgroundTransparency = 1
+StatMoedas.Text = "Moedas ganhas: 0"
+StatMoedas.TextColor3 = C.gold
+StatMoedas.TextSize = 13
+StatMoedas.Font = FM
+StatMoedas.TextXAlignment = Enum.TextXAlignment.Left
+StatMoedas.Parent = BoxInvStats
+
+local StatItens = Instance.new("TextLabel")
+StatItens.Size = UDim2.new(1, -32, 0, 20)
+StatItens.Position = UDim2.fromOffset(16, 28)
+StatItens.BackgroundTransparency = 1
+StatItens.Text = "Itens vendidos: 0"
+StatItens.TextColor3 = C.text
+StatItens.TextSize = 13
+StatItens.Font = FM
+StatItens.TextXAlignment = Enum.TextXAlignment.Left
+StatItens.Parent = BoxInvStats
+
+local StatEquip = Instance.new("TextLabel")
+StatEquip.Size = UDim2.new(1, -32, 0, 20)
+StatEquip.Position = UDim2.fromOffset(16, 50)
+StatEquip.BackgroundTransparency = 1
+StatEquip.Text = "Equipamentos trocados: 0"
+StatEquip.TextColor3 = C.purple
+StatEquip.TextSize = 13
+StatEquip.Font = FM
+StatEquip.TextXAlignment = Enum.TextXAlignment.Left
+StatEquip.Parent = BoxInvStats
+
+local BoxInvBtn = secao("Ações Rápidas", 148)
+botao(BoxInvBtn, "EQUIPAR AGORA", C.purple, function()
+    if equiparMelhores then equiparMelhores() end
+    task.wait(1.2)
+    if sincronizarInv then sincronizarInv() end
+end)
+botao(BoxInvBtn, "LIMPAR REPETIDOS", C.gold, function()
+    if limparRepetidos then limparRepetidos() end
+    task.wait(1.2)
+    if sincronizarInv then sincronizarInv() end
+end)
+botao(BoxInvBtn, "VENDER RUINS", C.orange, function()
+    if venderAte then venderAte(S.raridadeVender) end
+    task.wait(1.2)
+    if sincronizarInv then sincronizarInv() end
+end)
 
 -- Portais: viajar manualmente ou iniciar a viagem ao ativar o farm da área.
 local BoxPortal = secao("Viajar para Área", 150)
@@ -1668,4 +1750,202 @@ task.spawn(function()
     end
 end)
 
-print("[DexFarm v5.5] Carregado!")
+-- ============================================================
+-- SISTEMA DE INVENTÁRIO
+-- ============================================================
+local InventarioAcao = ReplicatedStorage:WaitForChild("InventarioAcao", 5)
+local InventarioAtualizar = ReplicatedStorage:WaitForChild("InventarioAtualizar", 5)
+local VendaEvento = ReplicatedStorage:WaitForChild("VendaEvento", 5)
+local DadosItens
+do
+    local ok, dados = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("DadosItens", 5))
+    end)
+    if ok then DadosItens = dados end
+end
+
+local invCache = { inv = {}, corpo = {}, tamanho = 0 }
+local inventarioCicloEmCurso = false
+
+if InventarioAtualizar and InventarioAtualizar:IsA("RemoteEvent") then
+    InventarioAtualizar.OnClientEvent:Connect(function(dados, msg)
+        if typeof(dados) ~= "table" then return end
+        invCache.inv = {}
+        invCache.corpo = {}
+        invCache.tamanho = dados.Tamanho or 90
+        for _, item in ipairs(dados.Inventario or {}) do
+            if typeof(item) == "table" and item.Slot ~= nil then
+                invCache.inv[item.Slot] = item
+            end
+        end
+        for _, item in ipairs(dados.Corpo or {}) do
+            if typeof(item) == "table" and item.Slot ~= nil then
+                invCache.corpo[item.Slot] = item
+            end
+        end
+        if msg and msg ~= "" then
+            SLab4.Text = "⚙ " .. tostring(msg)
+        end
+    end)
+end
+
+if VendaEvento and VendaEvento:IsA("RemoteEvent") then
+    VendaEvento.OnClientEvent:Connect(function(moedas, quantidade)
+        if typeof(moedas) == "number" and moedas > 0 then
+            S.moedasVendidas = S.moedasVendidas + moedas
+            S.itensVendidos = S.itensVendidos + (typeof(quantidade) == "number" and math.max(0, math.floor(quantidade)) or 1)
+        end
+    end)
+end
+
+local function hashCorpo()
+    local partes = {}
+    for slot, item in pairs(invCache.corpo) do
+        if item then
+            table.insert(partes, tostring(slot) .. ":" .. tostring(item.Tipo or item.Nome or "?") .. ":" .. tostring(item.Estrelas or 0))
+        end
+    end
+    table.sort(partes)
+    return table.concat(partes, "|")
+end
+
+local function acaoInventario(acao, ...)
+    if not InventarioAcao or not InventarioAcao:IsA("RemoteEvent") then
+        setStatus("Inventário indisponível", C.red)
+        SLab4.Text = "Remote InventarioAcao não encontrado"
+        return false
+    end
+    local ok, err = pcall(function()
+        InventarioAcao:FireServer(acao, ...)
+    end)
+    if not ok then
+        SLab4.Text = "Falha na ação: " .. tostring(err)
+        return false
+    end
+    return true
+end
+
+equiparMelhores = function()
+    setStatus("Equipando melhores...", C.purple)
+    SLab4.Text = "Auto-equip"
+    return acaoInventario("EquiparMelhores", "equipamento")
+end
+
+limparRepetidos = function()
+    setStatus("Limpando repetidos...", C.gold)
+    SLab4.Text = "Limpando repetidos"
+    return acaoInventario("LimparRepetidos")
+end
+
+venderAte = function(raridade)
+    raridade = math.clamp(math.floor(tonumber(raridade) or 1), 1, 3)
+    local nomes = { "Básicos", "Raros", "Épicos" }
+    setStatus("Vendendo " .. nomes[raridade] .. "...", C.gold)
+    SLab4.Text = "Vendendo até: " .. nomes[raridade]
+    return acaoInventario("VenderAte", raridade)
+end
+
+sincronizarInv = function()
+    return acaoInventario("Sincronizar")
+end
+
+local function tentarEvoluir()
+    if not InventarioAcao or not DadosItens or type(DadosItens.dadosDe) ~= "function" then return 0 end
+    local grupos = {}
+    for slot, item in pairs(invCache.inv) do
+        if item.Categoria == "Equipamento" and item.Travado ~= true then
+            local estrelas = tonumber(item.Estrelas) or 0
+            if estrelas < 5 and item.Tipo and DadosItens.dadosDe(item) then
+                local chave = tostring(item.Tipo) .. ":" .. tostring(estrelas)
+                grupos[chave] = grupos[chave] or { itens = {}, estrelas = estrelas }
+                table.insert(grupos[chave].itens, slot)
+            end
+        end
+    end
+    local evoluiu = 0
+    for _, grupo in pairs(grupos) do
+        if #grupo.itens >= 3 then
+            -- O servidor valida os itens e os recursos; tenta uma unidade por grupo.
+            local ok = acaoInventario("EvoluirEquip", "inv", grupo.itens[1])
+            if ok then
+                evoluiu = evoluiu + 1
+                task.wait(0.6)
+            end
+            if evoluiu >= 3 then break end
+        end
+    end
+    return evoluiu
+end
+
+task.spawn(function()
+    while GUI.Parent do
+        task.wait(1)
+        if not S.ativo then
+            S.ultimoInv = 0
+            continue
+        end
+        if inventarioCicloEmCurso or not InventarioAcao or not InventarioAcao:IsA("RemoteEvent") then
+            continue
+        end
+        local agora = os.clock()
+        if S.ultimoInv ~= 0 and agora - S.ultimoInv < S.intervaloInv then
+            continue
+        end
+        inventarioCicloEmCurso = true
+        S.ultimoInv = agora
+        local hashAntes = hashCorpo()
+        local okCiclo, errCiclo = pcall(function()
+            sincronizarInv()
+            task.wait(1)
+            if S.autoEquipar then
+                equiparMelhores()
+                task.wait(1.2)
+                sincronizarInv()
+                task.wait(0.8)
+            end
+            if S.autoEvoluir then
+                local n = tentarEvoluir()
+                if n > 0 then
+                    setStatus("Evoluindo " .. n .. " grupo(s)...", C.green)
+                    task.wait(1)
+                    sincronizarInv()
+                    task.wait(0.6)
+                end
+            end
+            if S.autoLimpar then
+                limparRepetidos()
+                task.wait(1.2)
+                sincronizarInv()
+                task.wait(0.6)
+            end
+            if S.autoVenderAte then
+                venderAte(S.raridadeVender)
+                task.wait(1.2)
+                sincronizarInv()
+                task.wait(0.6)
+            end
+            local hashDepois = hashCorpo()
+            if hashAntes ~= hashDepois and hashDepois ~= "" then
+                S.equipamentos = S.equipamentos + 1
+            end
+            setStatus("Farmando...", C.green)
+            SLab4.Text = ""
+        end)
+        if not okCiclo then
+            warn("[DexFarm] Erro no ciclo de inventário: " .. tostring(errCiclo))
+            SLab4.Text = "Erro no inventário; ciclo seguinte tentará novamente"
+        end
+        inventarioCicloEmCurso = false
+    end
+end)
+
+task.spawn(function()
+    while GUI.Parent do
+        task.wait(0.5)
+        StatMoedas.Text = "Moedas ganhas: " .. tostring(S.moedasVendidas)
+        StatItens.Text = "Itens vendidos: " .. tostring(S.itensVendidos)
+        StatEquip.Text = "Equipamentos trocados: " .. tostring(S.equipamentos)
+    end
+end)
+
+print("[DexFarm v5.6] Carregado!")
