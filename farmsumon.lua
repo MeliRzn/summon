@@ -1,5 +1,5 @@
 -- ============================================================
--- DEX FARM v5.1 — Bugs corrigidos
+-- DEX FARM v5.5 — UI organizada + modo Torre separado
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -36,7 +36,6 @@ local S = {
     ativo = false,
     autoAtaque = true,
     travarMira = true,
-    teleporte = true,
     walkBoost = true,
     autoColetar = true,
     monstroId = "Slime",
@@ -88,7 +87,9 @@ end
 -- ============================================================
 -- JANELA
 -- ============================================================
-local W, H = 420, 540
+local camera = workspace.CurrentCamera
+local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+local W, H = math.max(300, math.min(500, viewport.X - 24)), math.max(380, math.min(650, viewport.Y - 24))
 
 local Main = Instance.new("Frame")
 Main.Size = UDim2.fromOffset(W, H)
@@ -140,7 +141,7 @@ local Sub = Instance.new("TextLabel")
 Sub.Size = UDim2.new(1, -120, 0, 14)
 Sub.Position = UDim2.fromOffset(50, 30)
 Sub.BackgroundTransparency = 1
-Sub.Text = "v5.4 · biomas + farm"
+Sub.Text = "v5.5 · farm por área + Torre"
 Sub.TextColor3 = C.dim
 Sub.TextSize = 10
 Sub.Font = F
@@ -210,7 +211,7 @@ local function secao(titulo, altura)
     Head.Size = UDim2.new(1, 0, 0, 32)
     Head.BackgroundColor3 = C.card2
     Head.BorderSizePixel = 0
-    Head.Text = "  " .. titulo .. "                                      −"
+    Head.Text = "  " .. titulo
     Head.TextColor3 = C.text
     Head.TextSize = 13
     Head.Font = FB
@@ -219,6 +220,15 @@ local function secao(titulo, altura)
     Head.Parent = Holder
     corner(Head, 9)
     stroke(Head, C.stroke, 1)
+    local Arrow = Instance.new("TextLabel")
+    Arrow.Size = UDim2.fromOffset(28, 32)
+    Arrow.Position = UDim2.new(1, -32, 0, 0)
+    Arrow.BackgroundTransparency = 1
+    Arrow.Text = "⌄"
+    Arrow.TextColor3 = C.dim
+    Arrow.TextSize = 18
+    Arrow.Font = FB
+    Arrow.Parent = Head
 
     local Box = Instance.new("Frame")
     Box.Size = UDim2.new(1, 0, 0, altura)
@@ -244,7 +254,7 @@ local function secao(titulo, altura)
         expanded = not expanded
         Box.Visible = expanded
         Holder.Size = UDim2.new(1, -8, 0, expanded and (altura + 38) or 32)
-        Head.Text = "  " .. titulo .. (expanded and "                                      −" or "                                      +")
+        Arrow.Text = expanded and "⌄" or "›"
     end)
     return Box
 end
@@ -563,9 +573,7 @@ local Biomas = {
 local function obterListaBioma(bioma)
     local lista = {}
     for _, criatura in ipairs(bioma.monstros) do
-        if type(DadosMonstros[criatura.id]) == "table" then
-            table.insert(lista, {id=criatura.id, nome=criatura.nome})
-        end
+        table.insert(lista, {id=criatura.id, nome=criatura.nome})
     end
     return lista
 end
@@ -573,7 +581,7 @@ end
 -- ============================================================
 -- SEÇÕES EXPANSÍVEIS + ABAS DE BIOMA
 -- ============================================================
-local BoxFarm = secao("Farm", 246)
+local BoxFarm = secao("Farm / Biomas", 240)
 local AreaTitle = Instance.new("TextLabel")
 AreaTitle.Size = UDim2.new(1, -20, 0, 18)
 AreaTitle.BackgroundTransparency = 1
@@ -617,6 +625,7 @@ MonsterHost.Parent = BoxFarm
 
 local function selecionarBioma(bioma)
     S.biomaId = bioma.id
+    if bioma.id == "Torre" then S.torreAtivo = true else S.torreAtivo = false end
     AreaInfo.Text = bioma.nome .. "  ·  " .. bioma.nivel
     for _, child in ipairs(MonsterHost:GetChildren()) do child:Destroy() end
 
@@ -673,9 +682,7 @@ end
 selecionarBioma(Biomas[1])
 
 slider(BoxFarm, "Distância", 3, 12, S.distancia, function(v) S.distancia = v end)
-toggle(BoxFarm, "Auto Teleporte", S.teleporte, function(v) S.teleporte = v end)
-
-local BoxMov = secao("Movimento", 112)
+local BoxMov = secao("Movimento", 108)
 toggle(BoxMov, "Boost de Velocidade", S.walkBoost, function(v)
     S.walkBoost = v
     local ch = LP.Character
@@ -695,16 +702,16 @@ slider(BoxMov, "WalkSpeed", 16, 250, S.walkSpeed, function(v)
     end
 end)
 
-local BoxCombate = secao("Combate", 96)
+local BoxCombate = secao("Combate", 108)
 toggle(BoxCombate, "Auto Ataque", S.autoAtaque, function(v) S.autoAtaque = v end)
 toggle(BoxCombate, "Travar Mira", S.travarMira, function(v) S.travarMira = v end)
 
-local BoxColeta = secao("Coleta", 112)
+local BoxColeta = secao("Coleta", 108)
 toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
 slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
 
 -- Torre Infinita (altura suficiente para os três controles)
-local BoxTorre = secao("Torre Infinita", 138)
+local BoxTorre = secao("Torre Infinita", 154)
 toggle(BoxTorre, "Auto Entrar", S.torreAutoEntrar, function(v) S.torreAutoEntrar = v end)
 toggle(BoxTorre, "Auto Avançar Andar", S.torreAutoAdvance, function(v) S.torreAutoAdvance = v end)
 toggle(BoxTorre, "Auto Reviver", S.torreAutoReviver, function(v) S.torreAutoReviver = v end)
@@ -957,7 +964,7 @@ spawn(function()
         task.wait(0.05)
         if not S.ativo then alvoAtual = nil; S.alvoAtual = "nenhum"; continue end
         -- No modo Torre, o loop de farm comum não pode disputar movimento/alvo.
-        if S.torreAtivo then
+        if S.torreAtivo or S.biomaId == "Torre" then
             alvoAtual = nil
             task.wait(0.15)
             continue
@@ -1052,40 +1059,14 @@ StartBtn.MouseButton1Click:Connect(function()
         alvoAtual = nil
         task.wait(0.2)
 
-        -- Ativa o modo Torre se já estiver dentro dela ou houver uma entrada próxima.
-        local naTorre = LP:GetAttribute("NaTorre") == true
-        local entradaPerto = false
-        if S.torreAutoEntrar then
-            local ch = getChar()
-            local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("ProximityPrompt") and obj.Name == "Torre" and obj.Enabled then
-                        local parent = obj.Parent
-                        local pos
-                        if parent and parent:IsA("BasePart") then
-                            pos = parent.Position
-                        elseif parent and parent:IsA("Model") then
-                            local ok, pivot = pcall(function() return parent:GetPivot().Position end)
-                            if ok then pos = pivot end
-                        elseif parent and parent:IsA("Attachment") then
-                            pos = parent.WorldPosition
-                        end
-                        if pos and (pos - hrp.Position).Magnitude < 30 then
-                            entradaPerto = true
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        S.torreAtivo = naTorre or entradaPerto
-
-        if S.torreAtivo then
-            setStatus("Modo Torre ativado", C.purple)
-            SLab4.Text = "Andar " .. S.torreAndar
+        -- A aba escolhida decide o modo. Torre nunca cai no farm comum.
+        if S.biomaId == "Torre" then
+            S.torreAtivo = true
+            setStatus("Modo Torre · procurando entrada", C.purple)
+            SLab4.Text = "Torre Infinita · aguardando servidor"
         else
-            setStatus("Farm aberto iniciado", C.green)
+            S.torreAtivo = LP:GetAttribute("NaTorre") == true
+            setStatus("Farm: " .. tostring(S.biomaId or "Hub"), C.green)
             SLab4.Text = ""
         end
 
@@ -1095,7 +1076,7 @@ StartBtn.MouseButton1Click:Connect(function()
             if h then walkOriginal = h.WalkSpeed end
         end
     else
-        StartBtn.Text = "▶  INICIAR FARM"
+        StartBtn.Text = "▶  INICIAR"
         StartBtn.TextColor3 = C.green
         SDot.BackgroundColor3 = C.red
         setStatus("Inativo", C.text)
@@ -1174,7 +1155,7 @@ if TorreEvento and TorreEvento:IsA("RemoteEvent") then
             S.torreAtivo = false
             setStatus("Run acabou. Reentrando...", C.gold)
             task.wait(3)
-            if S.ativo and S.torreAutoEntrar then
+            if S.ativo and S.biomaId == "Torre" and S.torreAutoEntrar then
                 pcall(function() TorreEvento:FireServer("Abrir") end)
                 task.wait(0.3)
                 pcall(function() TorreEvento:FireServer("Entrar") end)
@@ -1246,7 +1227,13 @@ end
 task.spawn(function()
     while GUI.Parent do
         task.wait(0.12)
-        if not S.ativo or not TorreEvento or not TorreEvento:IsA("RemoteEvent") then
+        if not S.ativo or S.biomaId ~= "Torre" then
+            continue
+        end
+        if not TorreEvento or not TorreEvento:IsA("RemoteEvent") then
+            setStatus("Erro: TorreEvento indisponível", C.red)
+            SLab4.Text = "Não é possível entrar na Torre"
+            task.wait(1)
             continue
         end
 
@@ -1291,30 +1278,33 @@ task.spawn(function()
             -- Já estava no modo Torre, mas o servidor informa que saiu.
             S.torreAtivo = false
         else
-            -- Só tenta entrar automaticamente se a entrada identificada estiver perto.
+            -- Aba Torre selecionada: tenta o protocolo do servidor, sem fallback para Slime.
             if S.torreAutoEntrar then
                 local prompt, pos = acharPromptTorre()
                 if prompt and pos then
                     local ch = getChar()
                     local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
                     if hrp and (pos - hrp.Position).Magnitude > 10 then
+                        setStatus("Caminhe até a entrada da Torre", C.orange)
+                        SLab4.Text = "Entrada localizada · aproxime-se"
                         andarAte(pos, 4)
                     end
-                    pcall(function() TorreEvento:FireServer("Abrir") end)
-                    task.wait(0.5)
-                    pcall(function() TorreEvento:FireServer("Entrar") end)
-                    setStatus("Entrando na torre...", C.purple)
-                    task.wait(2)
-                else
-                    -- Não altera o farm normal se não houver entrada próxima.
-                    if LP:GetAttribute("NaTorre") ~= true then
-                        SLab4.Text = "Aproxime-se da entrada da torre"
-                    end
-                    task.wait(0.5)
                 end
+                setStatus("Solicitando entrada na Torre...", C.purple)
+                SLab4.Text = "Abrir → Entrar · aguardando confirmação"
+                pcall(function() TorreEvento:FireServer("Abrir") end)
+                task.wait(0.45)
+                if LP:GetAttribute("NaTorre") ~= true then
+                    pcall(function() TorreEvento:FireServer("Entrar") end)
+                end
+                task.wait(2.5)
+            else
+                setStatus("Auto Entrar desativado", C.orange)
+                SLab4.Text = "Ative Auto Entrar para iniciar a Torre"
+                task.wait(0.5)
             end
         end
     end
 end)
 
-print("[DexFarm v5.3] Carregado!")
+print("[DexFarm v5.5] Carregado!")
