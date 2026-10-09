@@ -1486,16 +1486,26 @@ spawn(function()
             if n and dn then
                 setStatus("Coletando núcleo...", C.gold)
                 SLab4.Text = "→ " .. n.Name
-                local ok = coletarNucleo(n)
-                task.wait(0.15)
-                if ok and not n.Parent then
+                local nomeItem = n.Name
+                coletarNucleo(n)
+                task.wait(0.2)
+                if not n.Parent or not n:IsDescendantOf(workspace) then
                     S.coletados = S.coletados + 1
-                    SLab4.Text = "✔ " .. n.Name
-                elseif not ok then
+                    SLab4.Text = "✔ " .. nomeItem
+                else
+                    -- Mesmo que o prompt não gere erro, aproximamos e tentamos novamente.
+                    -- Isso evita confundir chamada local bem-sucedida com coleta confirmada.
                     local pos = getPosicaoItem(n)
                     if pos then
-                        andarAte(pos, 3)
-                        coletarNucleo(n)
+                        local chColeta = getChar()
+                        local hrpColeta = chColeta and chColeta:FindFirstChild("HumanoidRootPart")
+                        if hrpColeta and (hrpColeta.Position - pos).Magnitude > 7 then
+                            andarAte(pos, 3)
+                        end
+                        if n.Parent and n:IsDescendantOf(workspace) then
+                            coletarNucleo(n)
+                            task.wait(0.15)
+                        end
                     end
                 end
                 task.wait(0.1)
