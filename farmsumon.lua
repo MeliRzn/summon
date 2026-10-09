@@ -226,7 +226,7 @@ local function secao(titulo, altura)
     Arrow.Size = UDim2.fromOffset(28, 32)
     Arrow.Position = UDim2.new(1, -32, 0, 0)
     Arrow.BackgroundTransparency = 1
-    Arrow.Text = "⌄"
+    Arrow.Text = "v"
     Arrow.TextColor3 = C.dim
     Arrow.TextSize = 18
     Arrow.Font = FB
@@ -256,7 +256,7 @@ local function secao(titulo, altura)
         expanded = not expanded
         Box.Visible = expanded
         Holder.Size = UDim2.new(1, -8, 0, expanded and (altura + 38) or 32)
-        Arrow.Text = expanded and "⌄" or "›"
+        Arrow.Text = expanded and "v" or ">"
     end)
     return Box
 end
@@ -866,13 +866,29 @@ end)
 -- MINIMIZAR / FECHAR
 -- ============================================================
 local min = false
+local alturaConteudo = H
+
+local function ajustarAlturaConteudo()
+    -- O painel acompanha o conteúdo: recolher seções também remove o espaço vazio.
+    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + 82, 230, H)
+    alturaConteudo = alturaDesejada
+    if not min then
+        TweenService:Create(Main, TweenInfo.new(0.16, Enum.EasingStyle.Quart), {
+            Size = UDim2.fromOffset(W, alturaConteudo)
+        }):Play()
+    end
+end
+
+Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(ajustarAlturaConteudo)
+task.defer(ajustarAlturaConteudo)
+
 MinBtn.MouseButton1Click:Connect(function()
     min = not min
     Scroll.Visible = not min
     TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-        Size = min and UDim2.fromOffset(W, 54) or UDim2.fromOffset(W, H)
+        Size = UDim2.fromOffset(W, min and 54 or alturaConteudo)
     }):Play()
-    MinBtn.Text = min and "+" or "—"
+    MinBtn.Text = min and "+" or "−"
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
@@ -1323,21 +1339,24 @@ task.spawn(function()
             -- Aba Torre selecionada: tenta o protocolo do servidor, sem fallback para Slime.
             if S.torreAutoEntrar then
                 local prompt, pos, distanciaTorre = acharPromptTorre()
-                if prompt and pos then
-                    local ch = getChar()
-                    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-                    if hrp and distanciaTorre and distanciaTorre > 10 then
-                        setStatus("Indo até a Torre Infinita...", C.orange)
-                        SLab4.Text = "Entrada localizada · " .. math.floor(distanciaTorre) .. " studs"
-                        -- Anda em trechos curtos e recalcula a rota até chegar.
-                        andarAte(pos, 4)
-                        task.wait(0.15)
-                        continue
+                local ch = getChar()
+                local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+
+                -- O centro da zona vem de DadosAreas.Lista.Torre.Centro.
+                -- Se não existir ProximityPrompt no mapa, usa as coordenadas conhecidas.
+                if not pos then
+                    pos = Vector3.new(0, 0, 5000)
+                    if hrp then
+                        distanciaTorre = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - pos).Magnitude
                     end
-                else
-                    setStatus("Procurando a entrada da Torre...", C.orange)
-                    SLab4.Text = "Não encontrei o marcador de entrada no mapa"
-                    task.wait(1)
+                end
+
+                if hrp and pos and distanciaTorre and distanciaTorre > 10 then
+                    setStatus("Indo até a Torre Infinita...", C.orange)
+                    SLab4.Text = (prompt and "Entrada localizada · " or "Indo para a zona · ") .. math.floor(distanciaTorre) .. " studs"
+                    -- Igual ao farm do Hub: MoveTo em trechos curtos, recalculando até o destino.
+                    andarAte(Vector3.new(pos.X, hrp.Position.Y, pos.Z), 4)
+                    task.wait(0.15)
                     continue
                 end
 
