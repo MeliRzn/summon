@@ -15,18 +15,18 @@ local DadosArmas = require(ReplicatedStorage:WaitForChild("DadosArmas"))
 local DadosMonstros = require(ReplicatedStorage:WaitForChild("DadosMonstros"))
 
 local C = {
-    bg      = Color3.fromRGB(20, 20, 24),
-    card    = Color3.fromRGB(30, 30, 36),
-    card2   = Color3.fromRGB(42, 42, 50),
-    stroke  = Color3.fromRGB(58, 58, 66),
-    text    = Color3.fromRGB(240, 240, 245),
-    dim     = Color3.fromRGB(142, 142, 152),
-    blue    = Color3.fromRGB(10, 132, 255),
-    green   = Color3.fromRGB(48, 209, 88),
-    red     = Color3.fromRGB(255, 69, 58),
-    orange  = Color3.fromRGB(255, 159, 10),
-    gold    = Color3.fromRGB(255, 214, 90),
-    purple  = Color3.fromRGB(175, 82, 222),
+    bg      = Color3.fromRGB(10, 14, 28),
+    card    = Color3.fromRGB(18, 25, 45),
+    card2   = Color3.fromRGB(29, 40, 69),
+    stroke  = Color3.fromRGB(54, 76, 120),
+    text    = Color3.fromRGB(245, 248, 255),
+    dim     = Color3.fromRGB(155, 173, 207),
+    blue    = Color3.fromRGB(44, 139, 255),
+    green   = Color3.fromRGB(0, 230, 156),
+    red     = Color3.fromRGB(255, 76, 115),
+    orange  = Color3.fromRGB(255, 151, 61),
+    gold    = Color3.fromRGB(255, 216, 82),
+    purple  = Color3.fromRGB(181, 93, 255),
 }
 local F  = Enum.Font.Gotham
 local FB = Enum.Font.GothamBold
@@ -67,6 +67,7 @@ local S = {
     portalAreaAtual = "Hub",
     portalAutoViajar = true,
     portalEmCurso = false,
+    movimentoToken = 0,
     -- Torre via remote TorreEvento
     torreAtivo = false,
     torreAutoEntrar = true,
@@ -98,6 +99,7 @@ DropGui.Name = "DexFarmDrop"
 DropGui.ResetOnSpawn = false
 DropGui.IgnoreGuiInset = true
 DropGui.DisplayOrder = 9999
+DropGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 DropGui.Parent = LP:WaitForChild("PlayerGui")
 
 local function corner(p, r)
@@ -113,7 +115,11 @@ end
 -- ============================================================
 local camera = workspace.CurrentCamera
 local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-local W, H = math.max(300, math.min(500, viewport.X - 24)), math.max(380, math.min(650, viewport.Y - 24))
+-- Layout compacto, especialmente para telas de celular.
+local isMobile = UserInputService.TouchEnabled or viewport.X <= 600
+local W = math.floor(math.clamp(viewport.X * (isMobile and 0.84 or 0.72), isMobile and 248 or 320, isMobile and 360 or 440))
+local alturaMaxima = math.max(280, math.min(isMobile and 420 or 560, viewport.Y - 36))
+local H = math.floor(math.clamp(viewport.Y * (isMobile and 0.58 or 0.72), math.min(300, alturaMaxima), alturaMaxima))
 
 local Main = Instance.new("Frame")
 Main.Size = UDim2.fromOffset(W, H)
@@ -122,16 +128,24 @@ Main.BackgroundColor3 = C.bg
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Parent = GUI
-corner(Main, 18)
-stroke(Main, C.stroke, 1)
+corner(Main, 20)
+stroke(Main, Color3.fromRGB(45, 63, 99), 1)
 
 -- Header
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 54)
+Header.Size = UDim2.new(1, 0, 0, isMobile and 48 or 54)
 Header.BackgroundColor3 = C.card
 Header.BorderSizePixel = 0
 Header.Parent = Main
 corner(Header, 18)
+local HeaderGradient = Instance.new("UIGradient")
+HeaderGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(23, 44, 88)),
+    ColorSequenceKeypoint.new(0.55, Color3.fromRGB(24, 34, 65)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(64, 31, 103)),
+})
+HeaderGradient.Rotation = 0
+HeaderGradient.Parent = Header
 
 local HFix = Instance.new("Frame")
 HFix.Size = UDim2.new(1, 0, 0, 18)
@@ -141,8 +155,8 @@ HFix.BorderSizePixel = 0
 HFix.Parent = Header
 
 local Icon = Instance.new("TextLabel")
-Icon.Size = UDim2.fromOffset(28, 28)
-Icon.Position = UDim2.fromOffset(16, 13)
+Icon.Size = UDim2.fromOffset(26, 26)
+Icon.Position = UDim2.fromOffset(13, isMobile and 10 or 13)
 Icon.BackgroundTransparency = 1
 Icon.Text = "✦"
 Icon.TextColor3 = C.blue
@@ -152,18 +166,18 @@ Icon.Parent = Header
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -120, 0, 20)
-Title.Position = UDim2.fromOffset(50, 11)
+Title.Position = UDim2.fromOffset(44, isMobile and 7 or 11)
 Title.BackgroundTransparency = 1
 Title.Text = "DEX FARM"
 Title.TextColor3 = C.text
-Title.TextSize = 16
+Title.TextSize = isMobile and 14 or 16
 Title.Font = FB
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
 local Sub = Instance.new("TextLabel")
 Sub.Size = UDim2.new(1, -120, 0, 14)
-Sub.Position = UDim2.fromOffset(50, 30)
+Sub.Position = UDim2.fromOffset(44, isMobile and 26 or 30)
 Sub.BackgroundTransparency = 1
 Sub.Text = "v5.5 · farm por área + Torre"
 Sub.TextColor3 = C.dim
@@ -173,8 +187,8 @@ Sub.TextXAlignment = Enum.TextXAlignment.Left
 Sub.Parent = Header
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.fromOffset(30, 30)
-MinBtn.Position = UDim2.new(1, -76, 0, 12)
+MinBtn.Size = UDim2.fromOffset(isMobile and 27 or 30, isMobile and 27 or 30)
+MinBtn.Position = UDim2.new(1, isMobile and -68 or -76, 0, isMobile and 10 or 12)
 MinBtn.BackgroundColor3 = C.card2
 MinBtn.Text = "—"
 MinBtn.TextColor3 = C.text
@@ -185,8 +199,8 @@ MinBtn.Parent = Header
 corner(MinBtn, 15)
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.fromOffset(30, 30)
-CloseBtn.Position = UDim2.new(1, -42, 0, 12)
+CloseBtn.Size = UDim2.fromOffset(isMobile and 27 or 30, isMobile and 27 or 30)
+CloseBtn.Position = UDim2.new(1, isMobile and -36 or -42, 0, isMobile and 10 or 12)
 CloseBtn.BackgroundColor3 = C.red
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.new(1,1,1)
@@ -200,11 +214,11 @@ corner(CloseBtn, 15)
 -- SCROLL — Fix #1: AutomaticCanvasSize (sem scroll infinito)
 -- ============================================================
 local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -20, 1, -74)
-Scroll.Position = UDim2.fromOffset(10, 64)
+Scroll.Size = UDim2.new(1, -16, 1, -(isMobile and 62 or 74))
+Scroll.Position = UDim2.fromOffset(8, isMobile and 56 or 64)
 Scroll.BackgroundTransparency = 1
 Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 3
+Scroll.ScrollBarThickness = isMobile and 2 or 3
 Scroll.ScrollBarImageColor3 = C.stroke
 Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)  -- ← deixa o Automatic calcular
@@ -212,32 +226,33 @@ Scroll.ScrollBarImageTransparency = 0.3
 Scroll.Parent = Main
 
 local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, 12)
+Layout.Padding = UDim.new(0, isMobile and 7 or 12)
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 Layout.Parent = Scroll
 
 local Pad = Instance.new("UIPadding")
-Pad.PaddingTop = UDim.new(0, 4)
-Pad.PaddingBottom = UDim.new(0, 20)
-Pad.PaddingRight = UDim.new(0, 6)
+Pad.PaddingTop = UDim.new(0, 3)
+Pad.PaddingBottom = UDim.new(0, isMobile and 10 or 20)
+Pad.PaddingRight = UDim.new(0, 4)
 Pad.Parent = Scroll
 
 -- ============================================================
 -- COMPONENTES
 -- ============================================================
 local function secao(titulo, altura)
+    local alturaSecao = isMobile and (titulo == "Farm / Biomas" and 238 or altura) or altura
     local Holder = Instance.new("Frame")
-    Holder.Size = UDim2.new(1, -8, 0, altura + 38)
+    Holder.Size = UDim2.new(1, -8, 0, alturaSecao + 38)
     Holder.BackgroundTransparency = 1
     Holder.Parent = Scroll
 
     local Head = Instance.new("TextButton")
-    Head.Size = UDim2.new(1, 0, 0, 32)
+    Head.Size = UDim2.new(1, 0, 0, isMobile and 30 or 32)
     Head.BackgroundColor3 = C.card2
     Head.BorderSizePixel = 0
     Head.Text = "  " .. titulo
     Head.TextColor3 = C.text
-    Head.TextSize = 13
+    Head.TextSize = isMobile and 12 or 13
     Head.Font = FB
     Head.TextXAlignment = Enum.TextXAlignment.Left
     Head.AutoButtonColor = false
@@ -255,7 +270,7 @@ local function secao(titulo, altura)
     Arrow.Parent = Head
 
     local Box = Instance.new("Frame")
-    Box.Size = UDim2.new(1, 0, 0, altura)
+    Box.Size = UDim2.new(1, 0, 0, alturaSecao)
     Box.Position = UDim2.fromOffset(0, 38)
     Box.BackgroundColor3 = C.card
     Box.BorderSizePixel = 0
@@ -273,12 +288,15 @@ local function secao(titulo, altura)
     BP.PaddingBottom = UDim.new(0, 6)
     BP.Parent = Box
 
-    local expanded = true
-    Head.MouseButton1Click:Connect(function()
+    local expanded = not isMobile or titulo == "Farm / Biomas"
+    Box.Visible = expanded
+    Holder.Size = UDim2.new(1, -8, 0, expanded and (alturaSecao + 38) or 32)
+    Arrow.Text = expanded and "⌄" or "›"
+    Head.Activated:Connect(function()
         expanded = not expanded
         Box.Visible = expanded
-        Holder.Size = UDim2.new(1, -8, 0, expanded and (altura + 38) or 32)
-        Arrow.Text = expanded and "v" or ">"
+        Holder.Size = UDim2.new(1, -8, 0, expanded and (alturaSecao + 38) or 32)
+        Arrow.Text = expanded and "⌄" or "›"
     end)
     return Box
 end
@@ -323,7 +341,7 @@ local function toggle(parent, texto, default, cb)
     Click.Parent = R
 
     local est = default
-    Click.MouseButton1Click:Connect(function()
+    Click.Activated:Connect(function()
         est = not est
         TweenService:Create(Track, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
             BackgroundColor3 = est and C.green or Color3.fromRGB(80, 80, 90)
@@ -418,129 +436,138 @@ end
 -- ============================================================
 local function dropdown(parent, texto, opcoes, defaultNome, cb)
     local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 44)
+    R.Size = UDim2.new(1, 0, 0, 42)
     R.BackgroundTransparency = 1
     R.Parent = parent
 
+    local larguraBotao = math.clamp((parent.AbsoluteSize.X > 0 and parent.AbsoluteSize.X or 260) * 0.58, 118, 166)
     local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -180, 1, 0)
-    L.Position = UDim2.fromOffset(14, 0)
+    L.Size = UDim2.new(1, -larguraBotao - 26, 1, 0)
+    L.Position = UDim2.fromOffset(12, 0)
     L.BackgroundTransparency = 1
     L.Text = texto
     L.TextColor3 = C.text
-    L.TextSize = 13
+    L.TextSize = 12
     L.Font = FM
     L.TextXAlignment = Enum.TextXAlignment.Left
     L.Parent = R
 
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.fromOffset(170, 30)
-    Btn.Position = UDim2.new(1, -184, 0.5, -15)
-    Btn.BackgroundColor3 = C.card2
-    Btn.Text = defaultNome
-    Btn.TextColor3 = C.blue
-    Btn.TextSize = 12
+    Btn.Size = UDim2.fromOffset(larguraBotao, 32)
+    Btn.Position = UDim2.new(1, -larguraBotao - 8, 0.5, -16)
+    Btn.BackgroundColor3 = Color3.fromRGB(29, 43, 70)
+    Btn.Text = tostring(defaultNome or "Selecionar") .. "  ▾"
+    Btn.TextColor3 = C.text
+    Btn.TextSize = 11
     Btn.Font = FB
     Btn.AutoButtonColor = false
     Btn.TextTruncate = Enum.TextTruncate.AtEnd
+    Btn.Active = true
+    Btn.ZIndex = 2
     Btn.Parent = R
-    corner(Btn, 8)
-    stroke(Btn, C.stroke, 1)
+    corner(Btn, 10)
+    stroke(Btn, C.blue, 1)
 
-    local overlay = nil
-    local lista = nil
+    local popupLayer
     local aberto = false
-
     local function fechar()
-        if lista then lista:Destroy(); lista = nil end
-        if overlay then overlay:Destroy(); overlay = nil end
+        if popupLayer then popupLayer:Destroy(); popupLayer = nil end
         aberto = false
     end
 
-    Btn.MouseButton1Click:Connect(function()
+    local function abrir()
         if aberto then fechar(); return end
+        if not DropGui or not DropGui.Parent or #opcoes == 0 then return end
         aberto = true
 
-        -- Overlay cobre a tela toda (na GUI de cima)
-        overlay = Instance.new("TextButton")
-        overlay.Size = UDim2.fromScale(1, 1)
-        overlay.BackgroundTransparency = 1
-        overlay.Text = ""
-        overlay.ZIndex = 1
-        overlay.Parent = DropGui
+        -- O botão de fechar e a lista ficam em camadas separadas. O overlay
+        -- não é pai da lista, portanto não pode roubar o toque da opção.
+        popupLayer = Instance.new("Frame")
+        popupLayer.Name = "CreaturePickerLayer"
+        popupLayer.Size = UDim2.fromScale(1, 1)
+        popupLayer.BackgroundTransparency = 1
+        popupLayer.ZIndex = 10
+        popupLayer.Parent = DropGui
 
-        -- Lista
-        local altura = math.min(#opcoes * 32 + 12, 260)
-        lista = Instance.new("ScrollingFrame")
-        lista.Size = UDim2.fromOffset(180, altura)
-        lista.Position = UDim2.fromOffset(Btn.AbsolutePosition.X - 10, Btn.AbsolutePosition.Y + 32)
-        lista.BackgroundColor3 = C.card2
-        lista.BorderSizePixel = 0
-        lista.ScrollBarThickness = 2
-        lista.ScrollBarImageColor3 = C.stroke
-        lista.ZIndex = 2
-        -- ✅ Fix: CanvasSize correto pro conteúdo
-        lista.CanvasSize = UDim2.new(0, 0, 0, #opcoes * 32 + 12)
-        lista.Parent = overlay
-        corner(lista, 10)
-        stroke(lista, C.stroke, 1)
+        local outside = Instance.new("TextButton")
+        outside.Name = "Dismiss"
+        outside.Size = UDim2.fromScale(1, 1)
+        outside.BackgroundTransparency = 1
+        outside.Text = ""
+        outside.AutoButtonColor = false
+        outside.Active = true
+        outside.ZIndex = 10
+        outside.Parent = popupLayer
+        outside.Activated:Connect(fechar)
 
-        local LL = Instance.new("UIListLayout")
-        LL.Padding = UDim.new(0, 0)
-        LL.SortOrder = Enum.SortOrder.LayoutOrder
-        LL.Parent = lista
+        local cam = workspace.CurrentCamera
+        local screen = cam and cam.ViewportSize or Vector2.new(360, 640)
+        local width = math.min(math.max(Btn.AbsoluteSize.X + 20, 160), screen.X - 16)
+        local rowHeight = 36
+        local height = math.min(#opcoes * rowHeight + 8, math.floor(screen.Y * 0.40), 260)
+        local x = math.clamp(Btn.AbsolutePosition.X + Btn.AbsoluteSize.X - width, 8, screen.X - width - 8)
+        local y = Btn.AbsolutePosition.Y + Btn.AbsoluteSize.Y + 5
+        if y + height > screen.Y - 8 then y = math.max(8, Btn.AbsolutePosition.Y - height - 5) end
+
+        local popup = Instance.new("Frame")
+        popup.Name = "CreaturePicker"
+        popup.Size = UDim2.fromOffset(width, height)
+        popup.Position = UDim2.fromOffset(x, y)
+        popup.BackgroundColor3 = Color3.fromRGB(20, 29, 49)
+        popup.BorderSizePixel = 0
+        popup.ZIndex = 20
+        popup.Parent = popupLayer
+        corner(popup, 14)
+        stroke(popup, C.blue, 1.25)
+
+        local list = Instance.new("ScrollingFrame")
+        list.Size = UDim2.new(1, -8, 1, -8)
+        list.Position = UDim2.fromOffset(4, 4)
+        list.BackgroundTransparency = 1
+        list.BorderSizePixel = 0
+        list.ScrollBarThickness = 3
+        list.ScrollBarImageColor3 = C.blue
+        list.ScrollingEnabled = true
+        list.Active = true
+        list.ZIndex = 21
+        list.CanvasSize = UDim2.fromOffset(0, #opcoes * rowHeight)
+        list.Parent = popup
+
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 1)
+        layout.Parent = list
 
         for i, op in ipairs(opcoes) do
-            local B = Instance.new("TextButton")
-            B.Size = UDim2.new(1, 0, 0, 32)
-            B.BackgroundTransparency = 1
-            B.Text = "  " .. op.nome
-            B.TextColor3 = C.text
-            B.TextSize = 12
-            B.Font = F
-            B.TextXAlignment = Enum.TextXAlignment.Left
-            B.AutoButtonColor = false
-            B.LayoutOrder = i
-            B.ZIndex = 3
-            B.Parent = lista
-
-            B.MouseEnter:Connect(function()
-                B.BackgroundTransparency = 0
-                B.BackgroundColor3 = C.blue
-            end)
-            B.MouseLeave:Connect(function()
-                B.BackgroundTransparency = 1
-            end)
-            B.MouseButton1Click:Connect(function()
-                Btn.Text = op.nome
+            local option = Instance.new("TextButton")
+            option.Name = "CreatureOption"
+            option.Size = UDim2.new(1, -2, 0, rowHeight)
+            option.BackgroundColor3 = (op.id == S.monstroId) and Color3.fromRGB(37, 77, 132) or Color3.fromRGB(20, 29, 49)
+            option.BackgroundTransparency = (op.id == S.monstroId) and 0 or 1
+            option.BorderSizePixel = 0
+            option.Text = "   " .. tostring(op.nome)
+            option.TextColor3 = C.text
+            option.TextSize = 12
+            option.Font = (op.id == S.monstroId) and FB or F
+            option.TextXAlignment = Enum.TextXAlignment.Left
+            option.AutoButtonColor = false
+            option.Active = true
+            option.Selectable = true
+            option.LayoutOrder = i
+            option.ZIndex = 22
+            option.Parent = list
+            corner(option, 8)
+            option.Activated:Connect(function()
+                Btn.Text = tostring(op.nome) .. "  ▾"
+                S.monstroId = op.id
+                S.monstroNome = op.nome
                 if cb then cb(op.id, op.nome) end
                 fechar()
             end)
         end
-    end)
+    end
 
-    -- Overlay fecha ao clicar fora
-    task.spawn(function()
-        while GUI.Parent do
-            task.wait(0.1)
-            if overlay and overlay.Parent then
-                -- Handler de click-outside via InputBegan
-                local conn
-                conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                    if gameProcessed then return end
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        local pos = input.Position
-                        local absX, absY = lista.AbsolutePosition.X, lista.AbsolutePosition.Y
-                        local absX2, absY2 = absX + lista.AbsoluteSize.X, absY + lista.AbsoluteSize.Y
-                        if not (pos.X >= absX and pos.X <= absX2 and pos.Y >= absY and pos.Y <= absY2) then
-                            fechar()
-                            conn:Disconnect()
-                        end
-                    end
-                end)
-            end
-        end
-    end)
+    Btn.Activated:Connect(abrir)
 end
 
 local function botao(parent, texto, cor, cb)
@@ -565,7 +592,7 @@ local function botao(parent, texto, cor, cb)
     B.MouseLeave:Connect(function()
         TweenService:Create(B, TweenInfo.new(0.2), { BackgroundColor3 = C.card }):Play()
     end)
-    if cb then B.MouseButton1Click:Connect(cb) end
+    if cb then B.Activated:Connect(cb) end
     return B
 end
 
@@ -653,6 +680,14 @@ local iniciarPortalArea
 
 local function atualizarEstadoFarm()
     S.ativo = S.farmBiomaAtivo or S.torreFarmAtivo
+
+    -- Ao desligar os dois modos de farm, restaura a velocidade padrão imediatamente.
+    if not S.ativo then
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = walkOriginal end
+    end
+
     if FarmBiomeBtn then
         FarmBiomeBtn.Text = S.farmBiomaAtivo and "■  DESATIVAR FARM DO BIOMA" or "▶  ATIVAR FARM DO BIOMA"
         FarmBiomeBtn.TextColor3 = S.farmBiomaAtivo and C.red or C.green
@@ -666,15 +701,19 @@ local function atualizarEstadoFarm()
 end
 
 local function selecionarBioma(bioma)
+    local biomaAnterior = S.biomaId
     S.biomaId = bioma.id
+
     if bioma.id == "Torre" and S.farmBiomaAtivo then
         S.farmBiomaAtivo = false
+        S.portalEmCurso = false
         atualizarEstadoFarm()
     elseif bioma.id ~= "Torre" and S.torreFarmAtivo then
         S.torreFarmAtivo = false
         S.torreAtivo = false
         atualizarEstadoFarm()
     end
+
     AreaInfo.Text = bioma.nome .. "  ·  " .. bioma.nivel
     for _, child in ipairs(MonsterHost:GetChildren()) do child:Destroy() end
 
@@ -705,6 +744,30 @@ local function selecionarBioma(bioma)
         S.monstroId = id
         S.monstroNome = nome
     end)
+
+    -- Se o farm já está ativo, trocar de aba também deve reiniciar a viagem
+    -- para a área escolhida. Antes, o loop cancelava o portal antigo, mas não
+    -- solicitava um novo, deixando o farm procurando criaturas em outra área.
+    if S.farmBiomaAtivo and biomaAnterior ~= bioma.id then
+        -- Invalida qualquer MoveTo antigo (combate ou portal) antes de trocar de área.
+        S.movimentoToken = S.movimentoToken + 1
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        local root = ch and ch:FindFirstChild("HumanoidRootPart")
+        if hum and root then hum:MoveTo(root.Position) end
+
+        -- Pausa o combate imediatamente até terminar a nova viagem.
+        S.portalEmCurso = true
+        S.portalAreaAtual = bioma.id
+        S.alvoAtual = "viajando para " .. bioma.id
+        setStatus("Trocando para " .. bioma.nome .. "...", C.blue)
+        SLab4.Text = "Cancelando o movimento anterior e solicitando novo portal"
+        task.defer(function()
+            if S.farmBiomaAtivo and S.biomaId == bioma.id and iniciarPortalArea then
+                iniciarPortalArea(bioma.id, true)
+            end
+        end)
+    end
 end
 
 for i, bioma in ipairs(Biomas) do
@@ -721,7 +784,7 @@ for i, bioma in ipairs(Biomas) do
     Tab.Parent = AreaTabs
     corner(Tab, 8)
     stroke(Tab, C.stroke, 1)
-    Tab.MouseButton1Click:Connect(function()
+    Tab.Activated:Connect(function()
         for _, sibling in ipairs(AreaTabs:GetChildren()) do
             if sibling:IsA("TextButton") then sibling.BackgroundColor3 = sibling == Tab and C.blue or C.card2 end
         end
@@ -1010,11 +1073,12 @@ local alturaConteudo = H
 
 local function ajustarAlturaConteudo()
     -- O painel acompanha o conteúdo: recolher seções também remove o espaço vazio.
-    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + 82, 230, H)
+    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + (isMobile and 68 or 82), isMobile and 270 or 230, H)
     alturaConteudo = alturaDesejada
     if not min then
         TweenService:Create(Main, TweenInfo.new(0.16, Enum.EasingStyle.Quart), {
-            Size = UDim2.fromOffset(W, alturaConteudo)
+            Size = UDim2.fromOffset(W, alturaConteudo),
+            Position = UDim2.new(0.5, -W / 2, 0.5, -alturaConteudo / 2)
         }):Play()
     end
 end
@@ -1022,16 +1086,18 @@ end
 Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(ajustarAlturaConteudo)
 task.defer(ajustarAlturaConteudo)
 
-MinBtn.MouseButton1Click:Connect(function()
+MinBtn.Activated:Connect(function()
     min = not min
     Scroll.Visible = not min
+    local novaAltura = min and 54 or alturaConteudo
     TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-        Size = UDim2.fromOffset(W, min and 54 or alturaConteudo)
+        Size = UDim2.fromOffset(W, novaAltura),
+        Position = UDim2.new(0.5, -W / 2, 0.5, -novaAltura / 2)
     }):Play()
     MinBtn.Text = min and "+" or "−"
 end)
 
-CloseBtn.MouseButton1Click:Connect(function()
+CloseBtn.Activated:Connect(function()
     S.ativo = false
     S.farmBiomaAtivo = false
     S.torreFarmAtivo = false
@@ -1089,13 +1155,20 @@ local function andarAte(destino, timeout)
     if not ch then return false end
     local hum = ch:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
+    local tokenMovimento = S.movimentoToken
     if S.walkBoost then hum.WalkSpeed = S.walkSpeed end
     hum:MoveTo(destino)
     local t0 = os.clock()
-    local timeout = timeout or 8
-    while os.clock() - t0 < timeout do
+    local limite = timeout or 8
+    while os.clock() - t0 < limite do
         task.wait(0.08)
-        if not S.ativo then return false end
+        if not S.ativo or tokenMovimento ~= S.movimentoToken then
+            local atual = getChar()
+            local atualHum = atual and atual:FindFirstChildOfClass("Humanoid")
+            local atualRoot = atual and atual:FindFirstChild("HumanoidRootPart")
+            if atualHum and atualRoot then atualHum:MoveTo(atualRoot.Position) end
+            return false
+        end
         local c = getChar()
         if not c then return false end
         if (c.HumanoidRootPart.Position - destino).Magnitude < 4 then return true end
@@ -1170,6 +1243,8 @@ local function ativarEntradaPortal(prompt)
 end
 
 iniciarPortalArea = function(areaId, forcar)
+    -- Cada solicitação de portal invalida deslocamentos anteriores.
+    S.movimentoToken = S.movimentoToken + 1
     if not S.farmBiomaAtivo then
         S.portalEmCurso = false
         return false
@@ -1180,6 +1255,7 @@ iniciarPortalArea = function(areaId, forcar)
     end
     if areaId == "Hub" then
         S.portalEmCurso = false
+        S.portalAreaAtual = "Hub"
         setStatus("Farm do Hub iniciado", C.green)
         SLab4.Text = ""
         return true
@@ -1236,7 +1312,7 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
         elseif acao == "Viajar" then
             setStatus("Entrando na área " .. tostring(areaId or S.biomaId) .. "...", C.blue)
         elseif acao == "Chegou" then
-            if not areaId or areaId == S.biomaId or areaId == S.portalAreaAtual then
+            if S.farmBiomaAtivo and (not areaId or areaId == S.biomaId or areaId == S.portalAreaAtual) then
                 S.portalEmCurso = false
                 portalAtual = nil
                 portalAguardandoDesde = 0
@@ -1244,6 +1320,8 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
                 SLab4.Text = "Farm iniciado em " .. tostring(areaId or S.biomaId)
             end
         elseif acao == "Erro" then
+            -- Não deixa erro atrasado do portal antigo cancelar a nova área.
+            if areaId and areaId ~= S.biomaId and areaId ~= S.portalAreaAtual then return end
             S.portalEmCurso = false
             S.farmBiomaAtivo = false
             atualizarEstadoFarm()
