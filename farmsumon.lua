@@ -49,6 +49,15 @@ local S = {
     abates = 0,
     coletados = 0,
     alvoAtual = "nenhum",
+    -- Locomoção selecionável
+    modoMovimento = "Andar",
+    tpAtivo = false,
+    tpIntervalo = 0.15,
+    tpMaxDist = 150,
+    tpUltimo = 0,
+    tpReverts = 0,
+    tpFalhasSeguidas = 0,
+    tpVerificacaoId = 0,
     -- Inventário
     autoEquipar = true,
     autoLimpar = true,
@@ -283,7 +292,41 @@ FarmTab:CreateButton({
     end,
 })
 FarmTab:CreateSlider({ Name = "Distância do alvo", Range = {3,12}, Increment = 1, Suffix = " studs", CurrentValue = S.distancia, Flag = "DexFarmDistance", Callback = function(v) S.distancia = v end })
-FarmTab:CreateSection("Movimento")
+FarmTab:CreateSection("Locomoção")
+FarmTab:CreateDropdown({
+    Name = "Modo de locomoção",
+    Options = {"Andar", "Teleporte adaptativo"},
+    CurrentOption = {S.modoMovimento},
+    MultipleOptions = false,
+    Flag = "SummonFarmMovementMode",
+    Callback = function(options)
+        local modo = type(options) == "table" and options[1] or options
+        if modo == "Andar" or modo == "Teleporte adaptativo" then
+            S.modoMovimento = modo
+            S.tpAtivo = modo == "Teleporte adaptativo"
+            setStatus("Locomoção: " .. modo, C.blue)
+        end
+    end,
+})
+FarmTab:CreateSlider({
+    Name = "Intervalo do teleporte",
+    Range = {0.08, 1},
+    Increment = 0.01,
+    Suffix = " s",
+    CurrentValue = S.tpIntervalo,
+    Flag = "SummonFarmTeleportInterval",
+    Callback = function(v) S.tpIntervalo = math.clamp(v, 0.08, 1) end,
+})
+FarmTab:CreateSlider({
+    Name = "Distância por salto",
+    Range = {50, 300},
+    Increment = 10,
+    Suffix = " studs",
+    CurrentValue = S.tpMaxDist,
+    Flag = "SummonFarmTeleportDistance",
+    Callback = function(v) S.tpMaxDist = math.clamp(v, 50, 300) end,
+})
+FarmTab:CreateSection("Boost de caminhada")
 FarmTab:CreateToggle({
     Name = "Boost de velocidade", CurrentValue = S.walkBoost, Flag = "DexFarmWalkBoost",
     Callback = function(v)
@@ -475,6 +518,99 @@ local function andarAte(destino, timeout)
         hum:MoveTo(destino)
     end
     return false
+end
+
+-- ============================================================
+-- LOCOMOÇÃO SELECIONÁVEL: caminhada normal ou teleporte adaptativo
+-- ============================================================
+local function ajustarY(pos)
+    local ch = getChar()
+    if not ch then return pos end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {ch}
+    local ok, hit = pcall(function()
+        return workspace:Raycast(
+            Vector3.new(pos.X, pos.Y + 50, pos.Z),
+            Vector3.new(0, -150, 0),
+            params
+        )
+    end)
+    if ok and hit then
+        return Vector3.new(pos.X, hit.Position.Y + 3, pos.Z)
+    end
+    return pos
+end
+
+local function moverPara(destino, timeout)
+    if typeof(destino) ~= "Vector3" then return false end
+    if S.modoMovimento ~= "Teleporte adaptativo" or not S.tpAtivo then
+        return andarAte(destino, timeout or 4)
+    end
+
+    local ch = getChar()
+    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    if not ch or not hrp or not hum then return false end
+    if S.walkBoost then hum.WalkSpeed = S.walkSpeed end
+
+    local agora = os.clock()
+    local diferenca = destino - hrp.Position
+    local distancia = diferenca.Magnitude
+    if distancia < 25 then
+        hum:MoveTo(destino)
+        return true
+    end
+
+    -- Se o cooldown estiver ativo, caminhe em vez de disparar teleporte em loop.
+    if agora - S.tpUltimo < S.tpIntervalo then
+        hum:MoveTo(destino)
+        return false
+    end
+
+    local passo = math.min(distancia, math.clamp(S.tpMaxDist, 50, 300))
+    if diferenca.Magnitude < 0.01 then return true end
+    local novoDestino = ajustarY(hrp.Position + diferenca.Unit * passo)
+    local posAntes = hrp.Position
+    S.tpUltimo = agora
+    S.tpVerificacaoId = S.tpVerificacaoId + 1
+    local verificacaoId = S.tpVerificacaoId
+
+    local ok = pcall(function()
+        hrp.CFrame = CFrame.new(novoDestino)
+    end)
+    if not ok then
+        S.tpFalhasSeguidas = S.tpFalhasSeguidas + 1
+        hum:MoveTo(destino)
+        return false
+    end
+
+    task.delay(0.35, function()
+        if not scriptAlive or verificacaoId ~= S.tpVerificacaoId then return end
+        local atual = getChar()
+        local atualHrp = atual and atual:FindFirstChild("HumanoidRootPart")
+        if not atualHrp then return end
+        if (atualHrp.Position - novoDestino).Magnitude > 20 then
+            S.tpReverts = S.tpReverts + 1
+            S.tpFalhasSeguidas = S.tpFalhasSeguidas + 1
+            S.tpIntervalo = math.min(S.tpIntervalo * 1.5, 1)
+            S.tpMaxDist = math.max(S.tpMaxDist * 0.7, 50)
+            if S.tpFalhasSeguidas >= 3 then
+                S.tpAtivo = false
+                S.modoMovimento = "Andar"
+                setStatus("Teleporte falhou repetidamente; voltando a Andar", C.orange)
+                SLab4.Text = "Teleporte pausado após 3 falhas. Selecione-o novamente para tentar."
+            else
+                SLab4.Text = string.format("Teleporte não confirmado (%d); reduzindo o passo", S.tpReverts)
+            end
+            return
+        end
+
+        S.tpFalhasSeguidas = 0
+        S.tpIntervalo = math.max(S.tpIntervalo * 0.98, 0.08)
+        S.tpMaxDist = math.min(S.tpMaxDist * 1.02, 300)
+    end)
+    return true
 end
 
 -- ============================================================
@@ -878,7 +1014,7 @@ spawn(function()
                         local chColeta = getChar()
                         local hrpColeta = chColeta and chColeta:FindFirstChild("HumanoidRootPart")
                         if hrpColeta and (hrpColeta.Position - pos).Magnitude > 7 then
-                            andarAte(pos, 3)
+                            moverPara(pos, 3)
                         end
                         if n.Parent and n:IsDescendantOf(workspace) then
                             coletarNucleo(n)
@@ -923,7 +1059,7 @@ spawn(function()
         if dist > S.distancia + 1 then
             local offset = (mp - ap)
             if offset.Magnitude > 0.1 then offset = offset.Unit end
-            andarAte(ap + offset * S.distancia, 6)
+            moverPara(ap + offset * S.distancia, 6)
         else
             local hum = ch:FindFirstChildOfClass("Humanoid")
             if hum then hum:MoveTo(mp) end
@@ -1141,7 +1277,7 @@ task.spawn(function()
                     if d > S.distancia + 1 then
                         local offset = mp - ap
                         if offset.Magnitude > 0.1 then offset = offset.Unit end
-                        andarAte(ap + offset * S.distancia, 3)
+                        moverPara(ap + offset * S.distancia, 3)
                     else
                         local hum = ch:FindFirstChildOfClass("Humanoid")
                         if hum then hum:MoveTo(mp) end
