@@ -105,25 +105,6 @@ local PortalTab = Window:CreateTab("Portais", "map-pinned")
 local TowerTab = Window:CreateTab("Torre", "castle")
 local SettingsTab = Window:CreateTab("Status", "activity")
 
-local SLab, SLab2, SLab3, SLab4
-local StatMoedas, StatItens, StatEquip
-local SDot = { BackgroundColor3 = C.red }
-local setStatus
-local iniciarPortalArea
-
-local function makeLabelProxy(handle, initialText)
-    local values = { Text = initialText or "", TextColor3 = C.text }
-    return setmetatable({}, {
-        __index = function(_, key) return values[key] end,
-        __newindex = function(_, key, value)
-            values[key] = value
-            if key == "Text" and handle then
-                pcall(function() handle:Set(tostring(value or "")) end)
-            end
-        end,
-    })
-end
-
 local function encerrarScript()
     if not scriptAlive then return end
     scriptAlive = false
@@ -176,14 +157,9 @@ end
 -- ============================================================
 -- CONTROLES RAYFIELD GEN 3
 -- ============================================================
-local function obterListaBioma(bioma)
-    local lista = {}
-    for _, criatura in ipairs(bioma.monstros) do
-        table.insert(lista, { id = criatura.id, nome = criatura.nome })
-    end
-    return lista
-end
-
+local SLab, SLab2, SLab3, SLab4
+local StatMoedas, StatItens, StatEquip
+local SDot = { BackgroundColor3 = C.red }
 local areaInfoLabel
 local creatureDropdown
 local setStatus
