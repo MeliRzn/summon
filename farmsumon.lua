@@ -103,7 +103,7 @@ local camera = workspace.CurrentCamera
 local viewport = camera and camera.ViewportSize or Vector2.new(390, 844)
 local mobileUI = UserInputService.TouchEnabled or viewport.X < 600
 local uiWidth = mobileUI and math.clamp(viewport.X - 20, 360, 400) or 530
-local uiHeight = mobileUI and 390 or 550
+local uiHeight = mobileUI and 340 or 550
 
 local Window = Rayfield:CreateWindow({
     Size = UDim2.fromOffset(uiWidth, uiHeight),
