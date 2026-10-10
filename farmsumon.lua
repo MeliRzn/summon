@@ -3,6 +3,7 @@
 -- ============================================================
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LP = Players.LocalPlayer
@@ -97,7 +98,15 @@ local Rayfield = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/SyncOfficialSpec/Rayfield_Gen_3_Concept/main/source.lua"
 ))()
 
+-- Janela compacta em celulares, mantendo o tamanho confortável no PC.
+local camera = workspace.CurrentCamera
+local viewport = camera and camera.ViewportSize or Vector2.new(390, 844)
+local mobileUI = UserInputService.TouchEnabled or viewport.X < 600
+local uiWidth = mobileUI and math.clamp(viewport.X - 20, 360, 400) or 530
+local uiHeight = mobileUI and 390 or 550
+
 local Window = Rayfield:CreateWindow({
+    Size = UDim2.fromOffset(uiWidth, uiHeight),
     Name = "SUMMON FARM",
     Subtitle = "Farm por bioma · Torre Infinita",
     Icon = "swords",
