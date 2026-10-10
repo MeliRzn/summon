@@ -1,5 +1,5 @@
 -- ============================================================
--- DEX FARM v5.5 — UI organizada + modo Torre separado
+-- DEX FARM v6.0 — Rayfield Gen 3 + lógica de farm preservada
 -- ============================================================
 
 local Players = game:GetService("Players")
@@ -79,494 +79,65 @@ local walkOriginal = 16
 -- Ações do inventário são declaradas antes da interface porque os botões as usam.
 local equiparMelhores, limparRepetidos, venderAte, sincronizarInv
 
--- Limpa
-for _, g in pairs(LP.PlayerGui:GetChildren()) do
-    if g.Name == "DexFarm" or g.Name == "DexFarmDrop" then g:Destroy() end
-end
-
-local GUI = Instance.new("ScreenGui")
-GUI.Name = "DexFarm"
-GUI.ResetOnSpawn = false
-GUI.IgnoreGuiInset = true
-GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-GUI.DisplayOrder = 999
-GUI.Parent = LP:WaitForChild("PlayerGui")
-
--- GUI separada para o dropdown (fica por cima de tudo)
-local DropGui = Instance.new("ScreenGui")
-DropGui.Name = "DexFarmDrop"
-DropGui.ResetOnSpawn = false
-DropGui.IgnoreGuiInset = true
-DropGui.DisplayOrder = 9999
-DropGui.Parent = LP:WaitForChild("PlayerGui")
-
-local function corner(p, r)
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = p
-end
-local function stroke(p, c, t)
-    local s = Instance.new("UIStroke")
-    s.Color = c or C.stroke; s.Thickness = t or 1; s.Parent = p
-end
-
 -- ============================================================
--- JANELA
+-- UI Rayfield Gen 3 Concept
 -- ============================================================
-local camera = workspace.CurrentCamera
-local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-local W, H = math.max(300, math.min(500, viewport.X - 24)), math.max(380, math.min(650, viewport.Y - 24))
+local scriptAlive = true
+local Rayfield = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/SyncOfficialSpec/Rayfield_Gen_3_Concept/main/source.lua"
+))()
 
-local Main = Instance.new("Frame")
-Main.Size = UDim2.fromOffset(W, H)
-Main.Position = UDim2.new(0.5, -W/2, 0.5, -H/2)
-Main.BackgroundColor3 = C.bg
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Parent = GUI
-corner(Main, 18)
-stroke(Main, C.stroke, 1)
+local Window = Rayfield:CreateWindow({
+    Name = "DEX FARM",
+    Subtitle = "Farm por bioma · Torre Infinita",
+    Icon = "swords",
+    LoadingTitle = "DEX FARM",
+    LoadingSubtitle = "Preparando automações",
+    ToggleUIKeybind = "K",
+    ConfigurationSaving = { Enabled = true, FolderName = "DexFarm", FileName = "Config" },
+    KeySystem = false,
+})
 
--- Header
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 54)
-Header.BackgroundColor3 = C.card
-Header.BorderSizePixel = 0
-Header.Parent = Main
-corner(Header, 18)
+local MainTab = Window:CreateTab("Principal", "house")
+local FarmTab = Window:CreateTab("Farm / Biomas", "swords")
+local InventoryTab = Window:CreateTab("Inventário", "backpack")
+local PortalTab = Window:CreateTab("Portais", "map-pinned")
+local TowerTab = Window:CreateTab("Torre", "castle")
+local SettingsTab = Window:CreateTab("Status", "activity")
 
-local HFix = Instance.new("Frame")
-HFix.Size = UDim2.new(1, 0, 0, 18)
-HFix.Position = UDim2.new(0, 0, 1, -18)
-HFix.BackgroundColor3 = C.card
-HFix.BorderSizePixel = 0
-HFix.Parent = Header
+local SLab, SLab2, SLab3, SLab4
+local StatMoedas, StatItens, StatEquip
+local SDot = { BackgroundColor3 = C.red }
+local setStatus
+local iniciarPortalArea
 
-local Icon = Instance.new("TextLabel")
-Icon.Size = UDim2.fromOffset(28, 28)
-Icon.Position = UDim2.fromOffset(16, 13)
-Icon.BackgroundTransparency = 1
-Icon.Text = "✦"
-Icon.TextColor3 = C.blue
-Icon.TextSize = 22
-Icon.Font = FB
-Icon.Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -120, 0, 20)
-Title.Position = UDim2.fromOffset(50, 11)
-Title.BackgroundTransparency = 1
-Title.Text = "DEX FARM"
-Title.TextColor3 = C.text
-Title.TextSize = 16
-Title.Font = FB
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
-local Sub = Instance.new("TextLabel")
-Sub.Size = UDim2.new(1, -120, 0, 14)
-Sub.Position = UDim2.fromOffset(50, 30)
-Sub.BackgroundTransparency = 1
-Sub.Text = "v5.5 · farm por área + Torre"
-Sub.TextColor3 = C.dim
-Sub.TextSize = 10
-Sub.Font = F
-Sub.TextXAlignment = Enum.TextXAlignment.Left
-Sub.Parent = Header
-
-local MinBtn = Instance.new("TextButton")
-MinBtn.Size = UDim2.fromOffset(30, 30)
-MinBtn.Position = UDim2.new(1, -76, 0, 12)
-MinBtn.BackgroundColor3 = C.card2
-MinBtn.Text = "—"
-MinBtn.TextColor3 = C.text
-MinBtn.TextSize = 14
-MinBtn.Font = FB
-MinBtn.AutoButtonColor = false
-MinBtn.Parent = Header
-corner(MinBtn, 15)
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.fromOffset(30, 30)
-CloseBtn.Position = UDim2.new(1, -42, 0, 12)
-CloseBtn.BackgroundColor3 = C.red
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.new(1,1,1)
-CloseBtn.TextSize = 12
-CloseBtn.Font = FB
-CloseBtn.AutoButtonColor = false
-CloseBtn.Parent = Header
-corner(CloseBtn, 15)
-
--- ============================================================
--- SCROLL — Fix #1: AutomaticCanvasSize (sem scroll infinito)
--- ============================================================
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -20, 1, -74)
-Scroll.Position = UDim2.fromOffset(10, 64)
-Scroll.BackgroundTransparency = 1
-Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 3
-Scroll.ScrollBarImageColor3 = C.stroke
-Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)  -- ← deixa o Automatic calcular
-Scroll.ScrollBarImageTransparency = 0.3
-Scroll.Parent = Main
-
-local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, 12)
-Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Parent = Scroll
-
-local Pad = Instance.new("UIPadding")
-Pad.PaddingTop = UDim.new(0, 4)
-Pad.PaddingBottom = UDim.new(0, 20)
-Pad.PaddingRight = UDim.new(0, 6)
-Pad.Parent = Scroll
-
--- ============================================================
--- COMPONENTES
--- ============================================================
-local function secao(titulo, altura)
-    local Holder = Instance.new("Frame")
-    Holder.Size = UDim2.new(1, -8, 0, altura + 38)
-    Holder.BackgroundTransparency = 1
-    Holder.Parent = Scroll
-
-    local Head = Instance.new("TextButton")
-    Head.Size = UDim2.new(1, 0, 0, 32)
-    Head.BackgroundColor3 = C.card2
-    Head.BorderSizePixel = 0
-    Head.Text = "  " .. titulo
-    Head.TextColor3 = C.text
-    Head.TextSize = 13
-    Head.Font = FB
-    Head.TextXAlignment = Enum.TextXAlignment.Left
-    Head.AutoButtonColor = false
-    Head.Parent = Holder
-    corner(Head, 9)
-    stroke(Head, C.stroke, 1)
-    local Arrow = Instance.new("TextLabel")
-    Arrow.Size = UDim2.fromOffset(28, 32)
-    Arrow.Position = UDim2.new(1, -32, 0, 0)
-    Arrow.BackgroundTransparency = 1
-    Arrow.Text = "v"
-    Arrow.TextColor3 = C.dim
-    Arrow.TextSize = 18
-    Arrow.Font = FB
-    Arrow.Parent = Head
-
-    local Box = Instance.new("Frame")
-    Box.Size = UDim2.new(1, 0, 0, altura)
-    Box.Position = UDim2.fromOffset(0, 38)
-    Box.BackgroundColor3 = C.card
-    Box.BorderSizePixel = 0
-    Box.Parent = Holder
-    corner(Box, 12)
-    stroke(Box, C.stroke, 1)
-
-    local BL = Instance.new("UIListLayout")
-    BL.Padding = UDim.new(0, 0)
-    BL.SortOrder = Enum.SortOrder.LayoutOrder
-    BL.Parent = Box
-
-    local BP = Instance.new("UIPadding")
-    BP.PaddingTop = UDim.new(0, 6)
-    BP.PaddingBottom = UDim.new(0, 6)
-    BP.Parent = Box
-
-    local expanded = true
-    Head.MouseButton1Click:Connect(function()
-        expanded = not expanded
-        Box.Visible = expanded
-        Holder.Size = UDim2.new(1, -8, 0, expanded and (altura + 38) or 32)
-        Arrow.Text = expanded and "v" or ">"
-    end)
-    return Box
-end
-
-local function toggle(parent, texto, default, cb)
-    local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 42)
-    R.BackgroundTransparency = 1
-    R.Parent = parent
-
-    local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -86, 1, 0)
-    L.Position = UDim2.fromOffset(14, 0)
-    L.BackgroundTransparency = 1
-    L.Text = texto
-    L.TextColor3 = C.text
-    L.TextSize = 14
-    L.Font = FM
-    L.TextXAlignment = Enum.TextXAlignment.Left
-    L.Parent = R
-
-    local Track = Instance.new("Frame")
-    Track.Size = UDim2.fromOffset(48, 28)
-    Track.Position = UDim2.new(1, -62, 0.5, -14)
-    Track.BackgroundColor3 = default and C.green or Color3.fromRGB(80, 80, 90)
-    Track.BorderSizePixel = 0
-    Track.Parent = R
-    corner(Track, 14)
-
-    local Knob = Instance.new("Frame")
-    Knob.Size = UDim2.fromOffset(24, 24)
-    Knob.Position = default and UDim2.new(1, -26, 0, 2) or UDim2.fromOffset(2, 2)
-    Knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    Knob.BorderSizePixel = 0
-    Knob.Parent = Track
-    corner(Knob, 12)
-
-    local Click = Instance.new("TextButton")
-    Click.Size = UDim2.fromScale(1, 1)
-    Click.BackgroundTransparency = 1
-    Click.Text = ""
-    Click.Parent = R
-
-    local est = default
-    Click.MouseButton1Click:Connect(function()
-        est = not est
-        TweenService:Create(Track, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
-            BackgroundColor3 = est and C.green or Color3.fromRGB(80, 80, 90)
-        }):Play()
-        TweenService:Create(Knob, TweenInfo.new(0.18, Enum.EasingStyle.Quart), {
-            Position = est and UDim2.new(1, -26, 0, 2) or UDim2.fromOffset(2, 2)
-        }):Play()
-        if cb then cb(est) end
-    end)
-    return { set = function(v) est = v end }
-end
-
-local function slider(parent, texto, minV, maxV, default, cb)
-    local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 56)
-    R.BackgroundTransparency = 1
-    R.Parent = parent
-
-    local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -100, 0, 18)
-    L.Position = UDim2.fromOffset(14, 8)
-    L.BackgroundTransparency = 1
-    L.Text = texto
-    L.TextColor3 = C.text
-    L.TextSize = 13
-    L.Font = FM
-    L.TextXAlignment = Enum.TextXAlignment.Left
-    L.Parent = R
-
-    local Val = Instance.new("TextLabel")
-    Val.Size = UDim2.fromOffset(60, 18)
-    Val.Position = UDim2.new(1, -74, 0, 8)
-    Val.BackgroundTransparency = 1
-    Val.Text = tostring(default)
-    Val.TextColor3 = C.blue
-    Val.TextSize = 13
-    Val.Font = FB
-    Val.TextXAlignment = Enum.TextXAlignment.Right
-    Val.Parent = R
-
-    local Track = Instance.new("Frame")
-    Track.Size = UDim2.new(1, -28, 0, 4)
-    Track.Position = UDim2.fromOffset(14, 38)
-    Track.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
-    Track.BorderSizePixel = 0
-    Track.Parent = R
-    corner(Track, 2)
-
-    local Fill = Instance.new("Frame")
-    Fill.Size = UDim2.new((default - minV) / (maxV - minV), 0, 1, 0)
-    Fill.BackgroundColor3 = C.blue
-    Fill.BorderSizePixel = 0
-    Fill.Parent = Track
-    corner(Fill, 2)
-
-    local Knob = Instance.new("Frame")
-    Knob.AnchorPoint = Vector2.new(0.5, 0.5)
-    Knob.Size = UDim2.fromOffset(16, 16)
-    Knob.Position = UDim2.new((default - minV) / (maxV - minV), 0, 0.5, 0)
-    Knob.BackgroundColor3 = Color3.new(1, 1, 1)
-    Knob.BorderSizePixel = 0
-    Knob.Parent = Track
-    corner(Knob, 8)
-
-    local Click = Instance.new("TextButton")
-    Click.Size = UDim2.fromScale(1, 1)
-    Click.BackgroundTransparency = 1
-    Click.Text = ""
-    Click.Parent = R
-
-    local drag = false
-    local function setX(x)
-        local rel = math.clamp((x - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
-        local v = minV + rel * (maxV - minV)
-        v = math.floor(v * 10 + 0.5) / 10
-        Fill.Size = UDim2.new(rel, 0, 1, 0)
-        Knob.Position = UDim2.new(rel, 0, 0.5, 0)
-        Val.Text = tostring(v)
-        if cb then cb(v) end
-    end
-    Click.MouseButton1Down:Connect(function() drag = true; setX(UserInputService:GetMouseLocation().X) end)
-    UserInputService.InputChanged:Connect(function(i)
-        if drag and i.UserInputType == Enum.UserInputType.MouseMovement then setX(i.Position.X) end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
-    end)
-end
-
--- ============================================================
--- DROPDOWN — Fix #2: usa GUI separada + CanvasSize correto
--- ============================================================
-local function dropdown(parent, texto, opcoes, defaultNome, cb)
-    local R = Instance.new("Frame")
-    R.Size = UDim2.new(1, 0, 0, 44)
-    R.BackgroundTransparency = 1
-    R.Parent = parent
-
-    local L = Instance.new("TextLabel")
-    L.Size = UDim2.new(1, -180, 1, 0)
-    L.Position = UDim2.fromOffset(14, 0)
-    L.BackgroundTransparency = 1
-    L.Text = texto
-    L.TextColor3 = C.text
-    L.TextSize = 13
-    L.Font = FM
-    L.TextXAlignment = Enum.TextXAlignment.Left
-    L.Parent = R
-
-    local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.fromOffset(170, 30)
-    Btn.Position = UDim2.new(1, -184, 0.5, -15)
-    Btn.BackgroundColor3 = C.card2
-    Btn.Text = defaultNome
-    Btn.TextColor3 = C.blue
-    Btn.TextSize = 12
-    Btn.Font = FB
-    Btn.AutoButtonColor = false
-    Btn.TextTruncate = Enum.TextTruncate.AtEnd
-    Btn.Parent = R
-    corner(Btn, 8)
-    stroke(Btn, C.stroke, 1)
-
-    local overlay = nil
-    local lista = nil
-    local aberto = false
-
-    local function fechar()
-        if lista then lista:Destroy(); lista = nil end
-        if overlay then overlay:Destroy(); overlay = nil end
-        aberto = false
-    end
-
-    Btn.MouseButton1Click:Connect(function()
-        if aberto then fechar(); return end
-        aberto = true
-
-        -- Overlay cobre a tela toda (na GUI de cima)
-        overlay = Instance.new("TextButton")
-        overlay.Size = UDim2.fromScale(1, 1)
-        overlay.BackgroundTransparency = 1
-        overlay.Text = ""
-        overlay.ZIndex = 1
-        overlay.Parent = DropGui
-
-        -- Lista
-        local altura = math.min(#opcoes * 32 + 12, 260)
-        lista = Instance.new("ScrollingFrame")
-        lista.Size = UDim2.fromOffset(180, altura)
-        lista.Position = UDim2.fromOffset(Btn.AbsolutePosition.X - 10, Btn.AbsolutePosition.Y + 32)
-        lista.BackgroundColor3 = C.card2
-        lista.BorderSizePixel = 0
-        lista.ScrollBarThickness = 2
-        lista.ScrollBarImageColor3 = C.stroke
-        lista.ZIndex = 2
-        -- ✅ Fix: CanvasSize correto pro conteúdo
-        lista.CanvasSize = UDim2.new(0, 0, 0, #opcoes * 32 + 12)
-        lista.Parent = overlay
-        corner(lista, 10)
-        stroke(lista, C.stroke, 1)
-
-        local LL = Instance.new("UIListLayout")
-        LL.Padding = UDim.new(0, 0)
-        LL.SortOrder = Enum.SortOrder.LayoutOrder
-        LL.Parent = lista
-
-        for i, op in ipairs(opcoes) do
-            local B = Instance.new("TextButton")
-            B.Size = UDim2.new(1, 0, 0, 32)
-            B.BackgroundTransparency = 1
-            B.Text = "  " .. op.nome
-            B.TextColor3 = C.text
-            B.TextSize = 12
-            B.Font = F
-            B.TextXAlignment = Enum.TextXAlignment.Left
-            B.AutoButtonColor = false
-            B.LayoutOrder = i
-            B.ZIndex = 3
-            B.Parent = lista
-
-            B.MouseEnter:Connect(function()
-                B.BackgroundTransparency = 0
-                B.BackgroundColor3 = C.blue
-            end)
-            B.MouseLeave:Connect(function()
-                B.BackgroundTransparency = 1
-            end)
-            B.MouseButton1Click:Connect(function()
-                Btn.Text = op.nome
-                if cb then cb(op.id, op.nome) end
-                fechar()
-            end)
-        end
-    end)
-
-    -- Overlay fecha ao clicar fora
-    task.spawn(function()
-        while GUI.Parent do
-            task.wait(0.1)
-            if overlay and overlay.Parent then
-                -- Handler de click-outside via InputBegan
-                local conn
-                conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                    if gameProcessed then return end
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        local pos = input.Position
-                        local absX, absY = lista.AbsolutePosition.X, lista.AbsolutePosition.Y
-                        local absX2, absY2 = absX + lista.AbsoluteSize.X, absY + lista.AbsoluteSize.Y
-                        if not (pos.X >= absX and pos.X <= absX2 and pos.Y >= absY and pos.Y <= absY2) then
-                            fechar()
-                            conn:Disconnect()
-                        end
-                    end
-                end)
+local function makeLabelProxy(handle, initialText)
+    local values = { Text = initialText or "", TextColor3 = C.text }
+    return setmetatable({}, {
+        __index = function(_, key) return values[key] end,
+        __newindex = function(_, key, value)
+            values[key] = value
+            if key == "Text" and handle then
+                pcall(function() handle:Set(tostring(value or "")) end)
             end
-        end
-    end)
+        end,
+    })
 end
 
-local function botao(parent, texto, cor, cb)
-    local B = Instance.new("TextButton")
-    B.Size = UDim2.new(1, 0, 0, 46)
-    B.BackgroundColor3 = C.card
-    B.Text = texto
-    B.TextColor3 = cor or C.blue
-    B.TextSize = 15
-    B.Font = FB
-    B.AutoButtonColor = false
-    B.Parent = parent
-    corner(B, 12)
-    stroke(B, C.stroke, 1)
-
-    B.MouseButton1Down:Connect(function()
-        TweenService:Create(B, TweenInfo.new(0.1), { BackgroundColor3 = C.card2 }):Play()
-    end)
-    B.MouseButton1Up:Connect(function()
-        TweenService:Create(B, TweenInfo.new(0.2), { BackgroundColor3 = C.card }):Play()
-    end)
-    B.MouseLeave:Connect(function()
-        TweenService:Create(B, TweenInfo.new(0.2), { BackgroundColor3 = C.card }):Play()
-    end)
-    if cb then B.MouseButton1Click:Connect(cb) end
-    return B
+local function encerrarScript()
+    if not scriptAlive then return end
+    scriptAlive = false
+    S.ativo = false
+    S.farmBiomaAtivo = false
+    S.torreFarmAtivo = false
+    S.torreAtivo = false
+    S.portalEmCurso = false
+    local ch = LP.Character
+    if ch then
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = walkOriginal end
+    end
+    pcall(function() Rayfield:Destroy() end)
 end
 
 -- ============================================================
@@ -603,447 +174,239 @@ local function obterListaBioma(bioma)
 end
 
 -- ============================================================
--- SEÇÕES EXPANSÍVEIS + ABAS DE BIOMA
+-- CONTROLES RAYFIELD GEN 3
 -- ============================================================
-local BoxFarm = secao("Farm / Biomas", 286)
-local AreaTitle = Instance.new("TextLabel")
-AreaTitle.Size = UDim2.new(1, -20, 0, 18)
-AreaTitle.BackgroundTransparency = 1
-AreaTitle.Text = "BIOMA / ÁREA"
-AreaTitle.TextColor3 = C.dim
-AreaTitle.TextSize = 10
-AreaTitle.Font = FB
-AreaTitle.TextXAlignment = Enum.TextXAlignment.Left
-AreaTitle.Parent = BoxFarm
+local function obterListaBioma(bioma)
+    local lista = {}
+    for _, criatura in ipairs(bioma.monstros) do
+        table.insert(lista, { id = criatura.id, nome = criatura.nome })
+    end
+    return lista
+end
 
-local AreaInfo = Instance.new("TextLabel")
-AreaInfo.Size = UDim2.new(1, -20, 0, 18)
-AreaInfo.BackgroundTransparency = 1
-AreaInfo.Text = "Selecione a área para listar apenas suas criaturas."
-AreaInfo.TextColor3 = C.dim
-AreaInfo.TextSize = 10
-AreaInfo.Font = F
-AreaInfo.TextXAlignment = Enum.TextXAlignment.Left
-AreaInfo.Parent = BoxFarm
-
-local AreaTabs = Instance.new("ScrollingFrame")
-AreaTabs.Size = UDim2.new(1, -16, 0, 38)
-AreaTabs.BackgroundTransparency = 1
-AreaTabs.BorderSizePixel = 0
-AreaTabs.ScrollBarThickness = 2
-AreaTabs.ScrollBarImageColor3 = C.blue
-AreaTabs.ScrollingDirection = Enum.ScrollingDirection.X
-AreaTabs.CanvasSize = UDim2.new(0, 0, 0, 0)
-AreaTabs.AutomaticCanvasSize = Enum.AutomaticSize.X
-AreaTabs.Parent = BoxFarm
-local AreaTabsLayout = Instance.new("UIListLayout")
-AreaTabsLayout.FillDirection = Enum.FillDirection.Horizontal
-AreaTabsLayout.Padding = UDim.new(0, 6)
-AreaTabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-AreaTabsLayout.Parent = AreaTabs
-
-local MonsterHost = Instance.new("Frame")
-MonsterHost.Size = UDim2.new(1, 0, 0, 44)
-MonsterHost.BackgroundTransparency = 1
-MonsterHost.Parent = BoxFarm
-
-local FarmBiomeBtn, TowerFarmBtn, SLab4
+local areaInfoLabel
+local creatureDropdown
 local setStatus
 local iniciarPortalArea
 
 local function atualizarEstadoFarm()
     S.ativo = S.farmBiomaAtivo or S.torreFarmAtivo
-    if FarmBiomeBtn then
-        FarmBiomeBtn.Text = S.farmBiomaAtivo and "■  DESATIVAR FARM DO BIOMA" or "▶  ATIVAR FARM DO BIOMA"
-        FarmBiomeBtn.TextColor3 = S.farmBiomaAtivo and C.red or C.green
-        FarmBiomeBtn.BackgroundColor3 = S.farmBiomaAtivo and Color3.fromRGB(58, 34, 36) or C.card
-    end
-    if TowerFarmBtn then
-        TowerFarmBtn.Text = S.torreFarmAtivo and "■  DESATIVAR FARM DA TORRE" or "▶  ATIVAR FARM DA TORRE"
-        TowerFarmBtn.TextColor3 = S.torreFarmAtivo and C.red or C.purple
-        TowerFarmBtn.BackgroundColor3 = S.torreFarmAtivo and Color3.fromRGB(58, 34, 36) or C.card
-    end
 end
 
 local function selecionarBioma(bioma)
+    if not bioma then return end
     S.biomaId = bioma.id
     if bioma.id == "Torre" and S.farmBiomaAtivo then
         S.farmBiomaAtivo = false
+        S.portalEmCurso = false
         atualizarEstadoFarm()
     elseif bioma.id ~= "Torre" and S.torreFarmAtivo then
         S.torreFarmAtivo = false
         S.torreAtivo = false
         atualizarEstadoFarm()
     end
-    AreaInfo.Text = bioma.nome .. "  ·  " .. bioma.nivel
-    for _, child in ipairs(MonsterHost:GetChildren()) do child:Destroy() end
-
-    local lista = obterListaBioma(bioma)
-    if #lista == 0 then
-        local info = Instance.new("TextLabel")
-        info.Size = UDim2.new(1, -16, 1, 0)
-        info.Position = UDim2.fromOffset(8, 0)
-        info.BackgroundTransparency = 1
-        info.Text = bioma.id == "Torre" and "Ondas dinâmicas · usa DadosTorre" or "Nenhuma criatura disponível nos DadosMonstros"
-        info.TextColor3 = C.gold
-        info.TextSize = 11
-        info.Font = FM
-        info.TextXAlignment = Enum.TextXAlignment.Left
-        info.Parent = MonsterHost
-        return
+    if areaInfoLabel then
+        pcall(function() areaInfoLabel:Set(bioma.nome .. " · " .. bioma.nivel) end)
     end
-
-    local achouSelecionado = false
-    for _, criatura in ipairs(lista) do
-        if criatura.id == S.monstroId then achouSelecionado = true end
-    end
-    if not achouSelecionado then
-        S.monstroId = lista[1].id
-        S.monstroNome = lista[1].nome
-    end
-    dropdown(MonsterHost, "Criatura", lista, S.monstroNome, function(id, nome)
-        S.monstroId = id
-        S.monstroNome = nome
-    end)
-end
-
-for i, bioma in ipairs(Biomas) do
-    local Tab = Instance.new("TextButton")
-    Tab.Size = UDim2.fromOffset(116, 30)
-    Tab.BackgroundColor3 = i == 1 and C.blue or C.card2
-    Tab.BorderSizePixel = 0
-    Tab.Text = bioma.id
-    Tab.TextColor3 = C.text
-    Tab.TextSize = 11
-    Tab.Font = FB
-    Tab.AutoButtonColor = false
-    Tab.LayoutOrder = i
-    Tab.Parent = AreaTabs
-    corner(Tab, 8)
-    stroke(Tab, C.stroke, 1)
-    Tab.MouseButton1Click:Connect(function()
-        for _, sibling in ipairs(AreaTabs:GetChildren()) do
-            if sibling:IsA("TextButton") then sibling.BackgroundColor3 = sibling == Tab and C.blue or C.card2 end
+    local criaturas, nomes = obterListaBioma(bioma), {}
+    for _, criatura in ipairs(criaturas) do table.insert(nomes, criatura.nome) end
+    if #nomes == 0 then
+        nomes = { "Torre: seleção dinâmica" }
+        S.monstroNome = "Torre"
+    else
+        local selecionada
+        for _, criatura in ipairs(criaturas) do
+            if criatura.id == S.monstroId then selecionada = criatura; break end
         end
-        selecionarBioma(bioma)
-    end)
+        if not selecionada then
+            selecionada = criaturas[1]
+            S.monstroId, S.monstroNome = selecionada.id, selecionada.nome
+        end
+    end
+    if creatureDropdown then
+        pcall(function()
+            creatureDropdown:Refresh(nomes)
+            creatureDropdown:Set({ S.monstroNome })
+        end)
+    end
 end
+
+local areaOptions = {}
+for _, bioma in ipairs(Biomas) do table.insert(areaOptions, bioma.nome) end
+areaInfoLabel = FarmTab:CreateLabel("Selecione uma área para ver as criaturas.", "map")
+creatureDropdown = FarmTab:CreateDropdown({
+    Name = "Criatura alvo",
+    Options = { "Slime Musgoso", "Lobo Glacial" },
+    CurrentOption = { S.monstroNome },
+    MultipleOptions = false,
+    Flag = "DexFarmCreature",
+    Callback = function(options)
+        local nome = type(options) == "table" and options[1] or options
+        if type(nome) ~= "string" then return end
+        for _, bioma in ipairs(Biomas) do
+            if bioma.id == S.biomaId then
+                for _, criatura in ipairs(bioma.monstros) do
+                    if criatura.nome == nome then S.monstroId, S.monstroNome = criatura.id, criatura.nome; return end
+                end
+            end
+        end
+    end,
+})
+FarmTab:CreateDropdown({
+    Name = "Bioma / área",
+    Options = areaOptions,
+    CurrentOption = { Biomas[1].nome },
+    MultipleOptions = false,
+    Flag = "DexFarmBiome",
+    Callback = function(options)
+        local nome = type(options) == "table" and options[1] or options
+        for _, bioma in ipairs(Biomas) do if bioma.nome == nome then selecionarBioma(bioma); break end end
+    end,
+})
 selecionarBioma(Biomas[1])
 
-FarmBiomeBtn = botao(BoxFarm, "▶  ATIVAR FARM DO BIOMA", C.green, function()
-    if S.farmBiomaAtivo then
-        S.farmBiomaAtivo = false
-        S.portalEmCurso = false
+FarmTab:CreateSection("Farm do bioma")
+FarmTab:CreateButton({
+    Name = "Alternar farm do bioma", Icon = "play",
+    Description = "Ativa ou para o farm da área selecionada.",
+    Callback = function()
+        if S.farmBiomaAtivo then
+            S.farmBiomaAtivo, S.portalEmCurso = false, false
+            atualizarEstadoFarm()
+            setStatus("Farm do bioma desativado", C.dim)
+            return
+        end
+        if S.biomaId == "Torre" then setStatus("Selecione um bioma normal para farmar", C.orange); return end
+        S.torreFarmAtivo, S.torreAtivo, S.farmBiomaAtivo = false, false, true
         atualizarEstadoFarm()
-        setStatus("Farm do bioma desativado", C.dim)
-        return
-    end
-    if S.biomaId == "Torre" then
-        setStatus("Selecione um bioma para farmar", C.orange)
-        return
-    end
-    S.torreFarmAtivo = false
-    S.torreAtivo = false
-    S.farmBiomaAtivo = true
-    atualizarEstadoFarm()
-    if S.biomaId ~= "Hub" then
-        if iniciarPortalArea then
-            iniciarPortalArea(S.biomaId, false)
+        if S.biomaId ~= "Hub" then
+            if iniciarPortalArea then iniciarPortalArea(S.biomaId, false) else setStatus("Preparando portal...", C.blue) end
         else
-            setStatus("Preparando portal...", C.blue)
+            S.portalEmCurso = false
+            setStatus("Farm do bioma: " .. tostring(S.biomaId), C.green)
         end
-    else
-        S.portalEmCurso = false
-        setStatus("Farm do bioma: " .. tostring(S.biomaId), C.green)
-    end
-end)
-slider(BoxFarm, "Distância", 3, 12, S.distancia, function(v) S.distancia = v end)
-local BoxMov = secao("Movimento", 108)
-toggle(BoxMov, "Boost de Velocidade", S.walkBoost, function(v)
-    S.walkBoost = v
-    local ch = LP.Character
-    if ch then
-        local h = ch:FindFirstChildOfClass("Humanoid")
-        if h then h.WalkSpeed = v and S.walkSpeed or walkOriginal end
-    end
-end)
-slider(BoxMov, "WalkSpeed", 16, 250, S.walkSpeed, function(v)
-    S.walkSpeed = v
-    if S.walkBoost then
+    end,
+})
+FarmTab:CreateSlider({ Name = "Distância do alvo", Range = {3,12}, Increment = 1, Suffix = " studs", CurrentValue = S.distancia, Flag = "DexFarmDistance", Callback = function(v) S.distancia = v end })
+FarmTab:CreateSection("Movimento")
+FarmTab:CreateToggle({
+    Name = "Boost de velocidade", CurrentValue = S.walkBoost, Flag = "DexFarmWalkBoost",
+    Callback = function(v)
+        S.walkBoost = v
         local ch = LP.Character
-        if ch then
-            local h = ch:FindFirstChildOfClass("Humanoid")
-            if h then h.WalkSpeed = v end
-        end
-    end
-end)
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = v and S.walkSpeed or walkOriginal end
+    end,
+})
+FarmTab:CreateSlider({
+    Name = "WalkSpeed", Range = {16,250}, Increment = 1, Suffix = " studs/s",
+    CurrentValue = S.walkSpeed, Flag = "DexFarmWalkSpeed",
+    Callback = function(v)
+        S.walkSpeed = v
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum and S.walkBoost then hum.WalkSpeed = v end
+    end,
+})
+FarmTab:CreateSection("Combate e coleta")
+FarmTab:CreateToggle({ Name = "Auto ataque", CurrentValue = S.autoAtaque, Flag = "DexFarmAutoAttack", Callback = function(v) S.autoAtaque = v end })
+FarmTab:CreateToggle({ Name = "Travar mira", CurrentValue = S.travarMira, Flag = "DexFarmAimLock", Callback = function(v) S.travarMira = v end })
+FarmTab:CreateToggle({ Name = "Auto coletar núcleos", CurrentValue = S.autoColetar, Flag = "DexFarmAutoCollect", Callback = function(v) S.autoColetar = v end })
+FarmTab:CreateSlider({ Name = "Raio de coleta", Range = {10,200}, Increment = 5, Suffix = " studs", CurrentValue = S.raioColeta, Flag = "DexFarmCollectRadius", Callback = function(v) S.raioColeta = v end })
 
-local BoxCombate = secao("Combate", 108)
-toggle(BoxCombate, "Auto Ataque", S.autoAtaque, function(v) S.autoAtaque = v end)
-toggle(BoxCombate, "Travar Mira", S.travarMira, function(v) S.travarMira = v end)
+InventoryTab:CreateSection("Automação de inventário")
+InventoryTab:CreateToggle({ Name = "Auto equipar melhores", CurrentValue = S.autoEquipar, Flag = "DexFarmAutoEquip", Callback = function(v) S.autoEquipar = v end })
+InventoryTab:CreateToggle({ Name = "Auto limpar repetidos", CurrentValue = S.autoLimpar, Flag = "DexFarmAutoClean", Callback = function(v) S.autoLimpar = v end })
+InventoryTab:CreateToggle({ Name = "Auto vender itens ruins", CurrentValue = S.autoVenderAte, Flag = "DexFarmAutoSell", Callback = function(v) S.autoVenderAte = v end })
+InventoryTab:CreateToggle({ Name = "Auto evoluir equipamentos iguais", CurrentValue = S.autoEvoluir, Flag = "DexFarmAutoEvolve", Callback = function(v) S.autoEvoluir = v end })
+InventoryTab:CreateToggle({ Name = "Auto craftar só melhorias", CurrentValue = S.autoCraftMelhores, Flag = "DexFarmAutoCraftUpgrades", Callback = function(v) S.autoCraftMelhores = v end })
+InventoryTab:CreateSlider({ Name = "Intervalo do inventário", Range = {15,180}, Increment = 5, Suffix = " s", CurrentValue = S.intervaloInv, Flag = "DexFarmInventoryInterval", Callback = function(v) S.intervaloInv = math.floor(v + 0.5) end })
+InventoryTab:CreateDropdown({
+    Name = "Vender até a raridade", Options = {"Só Básicos","Até Raros","Até Épicos"}, CurrentOption = {"Até Raros"},
+    MultipleOptions = false, Flag = "DexFarmSellRarity",
+    Callback = function(options)
+        local nome = type(options) == "table" and options[1] or options
+        local mapa = { ["Só Básicos"] = 1, ["Até Raros"] = 2, ["Até Épicos"] = 3 }
+        if mapa[nome] then S.raridadeVender = mapa[nome] end
+    end,
+})
+InventoryTab:CreateSection("Ações manuais")
+InventoryTab:CreateButton({ Name = "Equipar melhores agora", Icon = "shield-check", Callback = function() if equiparMelhores then equiparMelhores() end; task.wait(1.2); if sincronizarInv then sincronizarInv() end end })
+InventoryTab:CreateButton({ Name = "Limpar repetidos agora", Icon = "trash-2", Callback = function() if limparRepetidos then limparRepetidos() end; task.wait(1.2); if sincronizarInv then sincronizarInv() end end })
+InventoryTab:CreateButton({ Name = "Vender itens ruins agora", Icon = "coins", Callback = function() if venderAte then venderAte(S.raridadeVender) end; task.wait(1.2); if sincronizarInv then sincronizarInv() end end })
+InventoryTab:CreateSection("Estatísticas")
+local makeLabelProxy = function(handle, initialText)
+    local values = { Text = initialText or "", TextColor3 = C.text }
+    return setmetatable({}, {
+        __index = function(_, key) return values[key] end,
+        __newindex = function(_, key, value)
+            values[key] = value
+            if key == "Text" and handle then pcall(function() handle:Set(tostring(value or "")) end) end
+        end,
+    })
+end
+StatMoedas = makeLabelProxy(InventoryTab:CreateLabel("Moedas ganhas: 0", "coins"), "Moedas ganhas: 0")
+StatItens = makeLabelProxy(InventoryTab:CreateLabel("Itens vendidos: 0", "package"), "Itens vendidos: 0")
+StatEquip = makeLabelProxy(InventoryTab:CreateLabel("Equipamentos trocados: 0", "shield"), "Equipamentos trocados: 0")
 
-local BoxColeta = secao("Coleta", 108)
-toggle(BoxColeta, "Auto Coletar Núcleos", S.autoColetar, function(v) S.autoColetar = v end)
-slider(BoxColeta, "Raio de Coleta", 10, 200, S.raioColeta, function(v) S.raioColeta = v end)
-
--- ============================================================
--- SEÇÃO: INVENTÁRIO
--- ============================================================
-local BoxInv = secao("Inventário", 322)
-toggle(BoxInv, "Auto Equipar Melhores", S.autoEquipar, function(v) S.autoEquipar = v end)
-toggle(BoxInv, "Auto Limpar Repetidos", S.autoLimpar, function(v) S.autoLimpar = v end)
-toggle(BoxInv, "Auto Vender Ruins", S.autoVenderAte, function(v) S.autoVenderAte = v end)
-toggle(BoxInv, "Auto Evoluir Iguais", S.autoEvoluir, function(v) S.autoEvoluir = v end)
-toggle(BoxInv, "Auto Craftar Só Melhorias", S.autoCraftMelhores, function(v) S.autoCraftMelhores = v end)
-slider(BoxInv, "Intervalo (s)", 15, 180, S.intervaloInv, function(v) S.intervaloInv = math.floor(v + 0.5) end)
-dropdown(BoxInv, "Vender até", {
-    { id = 1, nome = "Só Básicos" },
-    { id = 2, nome = "Até Raros" },
-    { id = 3, nome = "Até Épicos" },
-}, "Até Raros", function(id)
-    S.raridadeVender = id
-end)
-
-local BoxInvStats = secao("Economia", 92)
-local StatMoedas = Instance.new("TextLabel")
-StatMoedas.Size = UDim2.new(1, -32, 0, 20)
-StatMoedas.Position = UDim2.fromOffset(16, 6)
-StatMoedas.BackgroundTransparency = 1
-StatMoedas.Text = "Moedas ganhas: 0"
-StatMoedas.TextColor3 = C.gold
-StatMoedas.TextSize = 13
-StatMoedas.Font = FM
-StatMoedas.TextXAlignment = Enum.TextXAlignment.Left
-StatMoedas.Parent = BoxInvStats
-
-local StatItens = Instance.new("TextLabel")
-StatItens.Size = UDim2.new(1, -32, 0, 20)
-StatItens.Position = UDim2.fromOffset(16, 28)
-StatItens.BackgroundTransparency = 1
-StatItens.Text = "Itens vendidos: 0"
-StatItens.TextColor3 = C.text
-StatItens.TextSize = 13
-StatItens.Font = FM
-StatItens.TextXAlignment = Enum.TextXAlignment.Left
-StatItens.Parent = BoxInvStats
-
-local StatEquip = Instance.new("TextLabel")
-StatEquip.Size = UDim2.new(1, -32, 0, 20)
-StatEquip.Position = UDim2.fromOffset(16, 50)
-StatEquip.BackgroundTransparency = 1
-StatEquip.Text = "Equipamentos trocados: 0"
-StatEquip.TextColor3 = C.purple
-StatEquip.TextSize = 13
-StatEquip.Font = FM
-StatEquip.TextXAlignment = Enum.TextXAlignment.Left
-StatEquip.Parent = BoxInvStats
-
-local BoxInvBtn = secao("Ações Rápidas", 148)
-botao(BoxInvBtn, "EQUIPAR AGORA", C.purple, function()
-    if equiparMelhores then equiparMelhores() end
-    task.wait(1.2)
-    if sincronizarInv then sincronizarInv() end
-end)
-botao(BoxInvBtn, "LIMPAR REPETIDOS", C.gold, function()
-    if limparRepetidos then limparRepetidos() end
-    task.wait(1.2)
-    if sincronizarInv then sincronizarInv() end
-end)
-botao(BoxInvBtn, "VENDER RUINS", C.orange, function()
-    if venderAte then venderAte(S.raridadeVender) end
-    task.wait(1.2)
-    if sincronizarInv then sincronizarInv() end
-end)
-
--- Portais: viajar manualmente ou iniciar a viagem ao ativar o farm da área.
-local BoxPortal = secao("Viajar para Área", 150)
 local areasList = {}
-for _, area in ipairs(Biomas) do
-    if area.id ~= "Torre" then
-        table.insert(areasList, { id = area.id, nome = area.nome })
-    end
-end
-dropdown(BoxPortal, "Destino", areasList, Biomas[1].nome, function(id)
-    S.portalAreaAtual = id
-end)
-botao(BoxPortal, "VIAJAR AGORA", C.blue, function()
-    local destino
-    for _, area in ipairs(Biomas) do
-        if area.id == S.portalAreaAtual and area.id ~= "Torre" then
-            destino = area
-            break
-        end
-    end
-    if not destino then
-        setStatus("Destino inválido", C.red)
-        return
-    end
-    selecionarBioma(destino)
-    S.torreFarmAtivo = false
-    S.torreAtivo = false
-    S.farmBiomaAtivo = true
-    atualizarEstadoFarm()
-    if iniciarPortalArea then
-        iniciarPortalArea(destino.id, true)
-    else
-        setStatus("Preparando sistema de portais...", C.blue)
-    end
-end)
-toggle(BoxPortal, "Auto Entrar no Portal", S.portalAutoViajar, function(v)
-    S.portalAutoViajar = v
-end)
-
--- Torre Infinita (altura suficiente para os três controles)
-local BoxTorre = secao("Torre Infinita", 200)
-toggle(BoxTorre, "Auto Entrar", S.torreAutoEntrar, function(v) S.torreAutoEntrar = v end)
-toggle(BoxTorre, "Auto Avançar Andar", S.torreAutoAdvance, function(v) S.torreAutoAdvance = v end)
-toggle(BoxTorre, "Auto Reviver", S.torreAutoReviver, function(v) S.torreAutoReviver = v end)
-TowerFarmBtn = botao(BoxTorre, "▶  ATIVAR FARM DA TORRE", C.purple, function()
-    if S.torreFarmAtivo then
-        S.torreFarmAtivo = false
-        S.torreAtivo = false
+for _, area in ipairs(Biomas) do if area.id ~= "Torre" then table.insert(areasList, area.nome) end end
+PortalTab:CreateDropdown({
+    Name = "Destino", Options = areasList, CurrentOption = {Biomas[1].nome}, MultipleOptions = false, Flag = "DexFarmPortalDestination",
+    Callback = function(options)
+        local nome = type(options) == "table" and options[1] or options
+        for _, area in ipairs(Biomas) do if area.nome == nome and area.id ~= "Torre" then S.portalAreaAtual = area.id; break end end
+    end,
+})
+PortalTab:CreateToggle({ Name = "Auto entrar no portal", CurrentValue = S.portalAutoViajar, Flag = "DexFarmPortalAutoEnter", Callback = function(v) S.portalAutoViajar = v end })
+PortalTab:CreateButton({
+    Name = "Viajar para a área selecionada", Icon = "navigation",
+    Callback = function()
+        local destino
+        for _, area in ipairs(Biomas) do if area.id == S.portalAreaAtual and area.id ~= "Torre" then destino = area; break end end
+        if not destino then setStatus("Destino inválido", C.red); return end
+        selecionarBioma(destino)
+        S.torreFarmAtivo, S.torreAtivo, S.farmBiomaAtivo = false, false, true
         atualizarEstadoFarm()
-        setStatus("Farm da Torre desativado", C.dim)
-        return
-    end
-    S.farmBiomaAtivo = false
-    S.biomaId = "Torre"
-    S.torreAtivo = false
-    S.torreFarmAtivo = true
-    atualizarEstadoFarm()
-    setStatus("Modo Torre · procurando entrada", C.purple)
-    SLab4.Text = "Torre Infinita · aguardando servidor"
-end)
-atualizarEstadoFarm()
+        if iniciarPortalArea then iniciarPortalArea(destino.id, true) else setStatus("Preparando sistema de portais...", C.blue) end
+    end,
+})
 
--- Status
-local StatusBox = Instance.new("Frame")
-StatusBox.Size = UDim2.new(1, -8, 0, 86)
-StatusBox.BackgroundColor3 = C.card
-StatusBox.BorderSizePixel = 0
-StatusBox.LayoutOrder = 100
-StatusBox.Parent = Scroll
-corner(StatusBox, 12)
-stroke(StatusBox, C.stroke, 1)
+TowerTab:CreateSection("Torre Infinita")
+TowerTab:CreateToggle({ Name = "Auto entrar", CurrentValue = S.torreAutoEntrar, Flag = "DexFarmTowerAutoEnter", Callback = function(v) S.torreAutoEntrar = v end })
+TowerTab:CreateToggle({ Name = "Auto avançar andar", CurrentValue = S.torreAutoAdvance, Flag = "DexFarmTowerAutoAdvance", Callback = function(v) S.torreAutoAdvance = v end })
+TowerTab:CreateToggle({ Name = "Auto reviver", CurrentValue = S.torreAutoReviver, Flag = "DexFarmTowerAutoRevive", Callback = function(v) S.torreAutoReviver = v end })
+TowerTab:CreateButton({
+    Name = "Alternar farm da Torre", Icon = "castle",
+    Description = "Ativa ou para o modo Torre sem iniciar o farm normal.",
+    Callback = function()
+        if S.torreFarmAtivo then
+            S.torreFarmAtivo, S.torreAtivo = false, false
+            atualizarEstadoFarm()
+            setStatus("Farm da Torre desativado", C.dim)
+            return
+        end
+        S.farmBiomaAtivo, S.biomaId, S.torreAtivo, S.torreFarmAtivo = false, "Torre", false, true
+        atualizarEstadoFarm()
+        setStatus("Modo Torre · procurando entrada", C.purple)
+        SLab4.Text = "Torre Infinita · aguardando servidor"
+    end,
+})
 
-local SDot = Instance.new("Frame")
-SDot.Size = UDim2.fromOffset(8, 8)
-SDot.Position = UDim2.fromOffset(16, 16)
-SDot.BackgroundColor3 = C.red
-SDot.BorderSizePixel = 0
-SDot.Parent = StatusBox
-corner(SDot, 4)
+MainTab:CreateSection("Estado do farm")
+SLab = makeLabelProxy(MainTab:CreateLabel("Inativo", "activity"), "Inativo")
+SLab2 = makeLabelProxy(MainTab:CreateLabel("Abates: 0 · Núcleos: 0", "swords"), "Abates: 0 · Núcleos: 0")
+SLab3 = makeLabelProxy(MainTab:CreateLabel("Alvo: nenhum", "target"), "Alvo: nenhum")
+SLab4 = makeLabelProxy(MainTab:CreateLabel("Aguardando início", "info"), "Aguardando início")
+MainTab:CreateButton({ Name = "Parar todas as automações", Icon = "square", Callback = encerrarScript })
+SettingsTab:CreateParagraph({
+    Title = "DEX FARM v6.0",
+    Content = "Interface Rayfield Gen 3 Concept. As automações de farm, coleta, portais, Torre e inventário mantêm seus estados separados.",
+})
+SettingsTab:CreateButton({ Name = "Encerrar script e restaurar velocidade", Icon = "power", Callback = encerrarScript })
 
-local SLab = Instance.new("TextLabel")
-SLab.Size = UDim2.new(1, -40, 0, 16)
-SLab.Position = UDim2.fromOffset(30, 12)
-SLab.BackgroundTransparency = 1
-SLab.Text = "Inativo"
-SLab.TextColor3 = C.text
-SLab.TextSize = 13
-SLab.Font = FB
-SLab.TextXAlignment = Enum.TextXAlignment.Left
-SLab.Parent = StatusBox
-
-local SLab2 = Instance.new("TextLabel")
-SLab2.Size = UDim2.new(1, -32, 0, 16)
-SLab2.Position = UDim2.fromOffset(16, 34)
-SLab2.BackgroundTransparency = 1
-SLab2.Text = "Abates: 0 · Núcleos: 0"
-SLab2.TextColor3 = C.dim
-SLab2.TextSize = 11
-SLab2.Font = F
-SLab2.TextXAlignment = Enum.TextXAlignment.Left
-SLab2.Parent = StatusBox
-
-local SLab3 = Instance.new("TextLabel")
-SLab3.Size = UDim2.new(1, -32, 0, 16)
-SLab3.Position = UDim2.fromOffset(16, 50)
-SLab3.BackgroundTransparency = 1
-SLab3.Text = "Alvo: nenhum"
-SLab3.TextColor3 = C.dim
-SLab3.TextSize = 11
-SLab3.Font = F
-SLab3.TextXAlignment = Enum.TextXAlignment.Left
-SLab3.Parent = StatusBox
-
-SLab4 = Instance.new("TextLabel")
-SLab4.Size = UDim2.new(1, -32, 0, 16)
-SLab4.Position = UDim2.fromOffset(16, 66)
-SLab4.BackgroundTransparency = 1
-SLab4.Text = ""
-SLab4.TextColor3 = C.gold
-SLab4.TextSize = 11
-SLab4.Font = FM
-SLab4.TextXAlignment = Enum.TextXAlignment.Left
-SLab4.Parent = StatusBox
-
--- Os modos agora são controlados pelos botões dentro de cada menu.
--- Não existe mais um botão global que inicia o farm errado.
-
--- ============================================================
--- DRAG
--- ============================================================
-local drag, ds, sp
-Header.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        drag = true; ds = i.Position; sp = Main.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local d = i.Position - ds
-        Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        drag = false
-    end
-end)
-
--- ============================================================
--- MINIMIZAR / FECHAR
--- ============================================================
-local min = false
-local alturaConteudo = H
-
-local function ajustarAlturaConteudo()
-    -- O painel acompanha o conteúdo: recolher seções também remove o espaço vazio.
-    local alturaDesejada = math.clamp(Scroll.AbsoluteCanvasSize.Y + 82, 230, H)
-    alturaConteudo = alturaDesejada
-    if not min then
-        TweenService:Create(Main, TweenInfo.new(0.16, Enum.EasingStyle.Quart), {
-            Size = UDim2.fromOffset(W, alturaConteudo)
-        }):Play()
-    end
-end
-
-Scroll:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(ajustarAlturaConteudo)
-task.defer(ajustarAlturaConteudo)
-
-MinBtn.MouseButton1Click:Connect(function()
-    min = not min
-    Scroll.Visible = not min
-    TweenService:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-        Size = UDim2.fromOffset(W, min and 54 or alturaConteudo)
-    }):Play()
-    MinBtn.Text = min and "+" or "−"
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    S.ativo = false
-    S.farmBiomaAtivo = false
-    S.torreFarmAtivo = false
-    S.torreAtivo = false
-    local ch = LP.Character
-    if ch then
-        local h = ch:FindFirstChildOfClass("Humanoid")
-        if h then h.WalkSpeed = walkOriginal end
-    end
-    GUI:Destroy()
-    DropGui:Destroy()
-end)
+Rayfield:LoadConfiguration()
+Rayfield:Notify({ Title = "DEX FARM", Content = "Interface Gen 3 carregada.", Duration = 5, Image = "swords" })
 
 -- ============================================================
 -- FUNÇÕES DE JOGO
@@ -1255,7 +618,7 @@ if PortalEvento and PortalEvento:IsA("RemoteEvent") then
 end
 
 task.spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(0.2)
         if not S.portalEmCurso or not S.farmBiomaAtivo or S.torreFarmAtivo then
             continue
@@ -1467,7 +830,7 @@ local ultimoAtaque = 0
 local alvoAtual = nil
 
 spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(0.05)
         if not S.farmBiomaAtivo then alvoAtual = nil; S.alvoAtual = "nenhum"; continue end
         if S.portalEmCurso then
@@ -1565,7 +928,7 @@ spawn(function()
 end)
 
 spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(0.3)
         SLab2.Text = string.format("Abates: %d · Núcleos: %d", S.abates, S.coletados)
         SLab3.Text = "Alvo: " .. S.alvoAtual
@@ -1574,7 +937,7 @@ end)
 
 -- Estado visual do indicador, independente do modo selecionado.
 task.spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(0.2)
         SDot.BackgroundColor3 = S.ativo and C.green or C.red
         if not S.ativo then
@@ -1730,7 +1093,7 @@ end
 
 -- Loop da Torre: o combate reutiliza as funções já existentes.
 task.spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(0.12)
         if not S.torreFarmAtivo or S.biomaId ~= "Torre" then
             continue
@@ -2005,7 +1368,7 @@ local function tentarEvoluir()
 end
 
 task.spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(1)
         if not S.ativo then
             S.ultimoInv = 0
@@ -2095,7 +1458,7 @@ task.spawn(function()
 end)
 
 task.spawn(function()
-    while GUI.Parent do
+    while scriptAlive do
         task.wait(0.5)
         StatMoedas.Text = "Moedas ganhas: " .. tostring(S.moedasVendidas)
         StatItens.Text = "Itens vendidos: " .. tostring(S.itensVendidos)
@@ -2103,4 +1466,4 @@ task.spawn(function()
     end
 end)
 
-print("[DexFarm v5.8] Carregado!")
+print("[DexFarm v6.0] Carregado com Rayfield Gen 3!")
