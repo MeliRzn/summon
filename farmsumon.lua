@@ -246,9 +246,27 @@ end
 
 local areaOptions = {}
 for _, bioma in ipairs(Biomas) do table.insert(areaOptions, bioma.nome) end
-areaInfoLabel = FarmTab:CreateLabel("Selecione uma área para ver as criaturas.", "map")
+
+FarmTab:CreateSection("1. Escolha do alvo")
+FarmTab:CreateDropdown({
+    Name = "1. Bioma ou área",
+    Options = areaOptions,
+    CurrentOption = { Biomas[1].nome },
+    MultipleOptions = false,
+    Flag = "DexFarmBiome",
+    Callback = function(options)
+        local nome = type(options) == "table" and options[1] or options
+        for _, bioma in ipairs(Biomas) do
+            if bioma.nome == nome then
+                selecionarBioma(bioma)
+                break
+            end
+        end
+    end,
+})
+areaInfoLabel = FarmTab:CreateLabel("A área selecionada aparecerá aqui.", "map")
 creatureDropdown = FarmTab:CreateDropdown({
-    Name = "Criatura alvo",
+    Name = "2. Criatura para farmar",
     Options = { "Slime Musgoso", "Lobo Glacial" },
     CurrentOption = { S.monstroNome },
     MultipleOptions = false,
@@ -259,29 +277,21 @@ creatureDropdown = FarmTab:CreateDropdown({
         for _, bioma in ipairs(Biomas) do
             if bioma.id == S.biomaId then
                 for _, criatura in ipairs(bioma.monstros) do
-                    if criatura.nome == nome then S.monstroId, S.monstroNome = criatura.id, criatura.nome; return end
+                    if criatura.nome == nome then
+                        S.monstroId, S.monstroNome = criatura.id, criatura.nome
+                        return
+                    end
                 end
             end
         end
     end,
 })
-FarmTab:CreateDropdown({
-    Name = "Bioma / área",
-    Options = areaOptions,
-    CurrentOption = { Biomas[1].nome },
-    MultipleOptions = false,
-    Flag = "DexFarmBiome",
-    Callback = function(options)
-        local nome = type(options) == "table" and options[1] or options
-        for _, bioma in ipairs(Biomas) do if bioma.nome == nome then selecionarBioma(bioma); break end end
-    end,
-})
 selecionarBioma(Biomas[1])
 
-FarmTab:CreateSection("Farm do bioma")
+FarmTab:CreateSection("3. Controle do farm")
 FarmTab:CreateButton({
-    Name = "Alternar farm do bioma", Icon = "play",
-    Description = "Ativa ou para o farm da área selecionada.",
+    Name = "Iniciar / parar farm da área", Icon = "play",
+    Description = "Usa o bioma e a criatura escolhidos acima.",
     Callback = function()
         if S.farmBiomaAtivo then
             S.farmBiomaAtivo, S.portalEmCurso = false, false
@@ -301,9 +311,9 @@ FarmTab:CreateButton({
     end,
 })
 FarmTab:CreateSlider({ Name = "Distância do alvo", Range = {3,12}, Increment = 1, Suffix = " studs", CurrentValue = S.distancia, Flag = "DexFarmDistance", Callback = function(v) S.distancia = v end })
-FarmTab:CreateSection("Locomoção")
+FarmTab:CreateSection("4. Movimento")
 FarmTab:CreateDropdown({
-    Name = "Modo de locomoção",
+    Name = "Como se mover",
     Options = {"Andar", "Teleporte adaptativo"},
     CurrentOption = {S.modoMovimento},
     MultipleOptions = false,
@@ -323,7 +333,7 @@ FarmTab:CreateDropdown({
     end,
 })
 FarmTab:CreateSlider({
-    Name = "Intervalo do teleporte",
+    Name = "Pausa entre teleportes",
     Range = {0.08, 1},
     Increment = 0.01,
     Suffix = " s",
@@ -332,7 +342,7 @@ FarmTab:CreateSlider({
     Callback = function(v) S.tpIntervalo = math.clamp(v, 0.08, 1) end,
 })
 FarmTab:CreateSlider({
-    Name = "Distância por salto",
+    Name = "Distância de cada teleporte",
     Range = {50, 300},
     Increment = 10,
     Suffix = " studs",
@@ -340,9 +350,9 @@ FarmTab:CreateSlider({
     Flag = "SummonFarmTeleportDistance",
     Callback = function(v) S.tpMaxDist = math.clamp(v, 50, 300) end,
 })
-FarmTab:CreateSection("Boost de caminhada")
+FarmTab:CreateSection("5. Velocidade ao andar")
 FarmTab:CreateToggle({
-    Name = "Boost de velocidade", CurrentValue = S.walkBoost, Flag = "DexFarmWalkBoost",
+    Name = "Ativar velocidade personalizada", CurrentValue = S.walkBoost, Flag = "DexFarmWalkBoost",
     Callback = function(v)
         S.walkBoost = v
         local ch = LP.Character
@@ -351,7 +361,7 @@ FarmTab:CreateToggle({
     end,
 })
 FarmTab:CreateSlider({
-    Name = "WalkSpeed", Range = {16,250}, Increment = 1, Suffix = " studs/s",
+    Name = "Velocidade de caminhada", Range = {16,250}, Increment = 1, Suffix = " studs/s",
     CurrentValue = S.walkSpeed, Flag = "DexFarmWalkSpeed",
     Callback = function(v)
         S.walkSpeed = v
@@ -360,21 +370,21 @@ FarmTab:CreateSlider({
         if hum and S.walkBoost then hum.WalkSpeed = v end
     end,
 })
-FarmTab:CreateSection("Combate e coleta")
-FarmTab:CreateToggle({ Name = "Auto ataque", CurrentValue = S.autoAtaque, Flag = "DexFarmAutoAttack", Callback = function(v) S.autoAtaque = v end })
-FarmTab:CreateToggle({ Name = "Travar mira", CurrentValue = S.travarMira, Flag = "DexFarmAimLock", Callback = function(v) S.travarMira = v end })
-FarmTab:CreateToggle({ Name = "Auto coletar núcleos", CurrentValue = S.autoColetar, Flag = "DexFarmAutoCollect", Callback = function(v) S.autoColetar = v end })
+FarmTab:CreateSection("6. Combate e coleta")
+FarmTab:CreateToggle({ Name = "Atacar automaticamente", CurrentValue = S.autoAtaque, Flag = "DexFarmAutoAttack", Callback = function(v) S.autoAtaque = v end })
+FarmTab:CreateToggle({ Name = "Manter mira no alvo", CurrentValue = S.travarMira, Flag = "DexFarmAimLock", Callback = function(v) S.travarMira = v end })
+FarmTab:CreateToggle({ Name = "Coletar núcleos automaticamente", CurrentValue = S.autoColetar, Flag = "DexFarmAutoCollect", Callback = function(v) S.autoColetar = v end })
 FarmTab:CreateSlider({ Name = "Raio de coleta", Range = {10,200}, Increment = 5, Suffix = " studs", CurrentValue = S.raioColeta, Flag = "DexFarmCollectRadius", Callback = function(v) S.raioColeta = v end })
 
-InventoryTab:CreateSection("Automação de inventário")
-InventoryTab:CreateToggle({ Name = "Auto equipar melhores", CurrentValue = S.autoEquipar, Flag = "DexFarmAutoEquip", Callback = function(v) S.autoEquipar = v end })
-InventoryTab:CreateToggle({ Name = "Auto limpar repetidos", CurrentValue = S.autoLimpar, Flag = "DexFarmAutoClean", Callback = function(v) S.autoLimpar = v end })
-InventoryTab:CreateToggle({ Name = "Auto vender itens ruins", CurrentValue = S.autoVenderAte, Flag = "DexFarmAutoSell", Callback = function(v) S.autoVenderAte = v end })
-InventoryTab:CreateToggle({ Name = "Auto evoluir equipamentos iguais", CurrentValue = S.autoEvoluir, Flag = "DexFarmAutoEvolve", Callback = function(v) S.autoEvoluir = v end })
-InventoryTab:CreateToggle({ Name = "Auto craftar só melhorias", CurrentValue = S.autoCraftMelhores, Flag = "DexFarmAutoCraftUpgrades", Callback = function(v) S.autoCraftMelhores = v end })
-InventoryTab:CreateSlider({ Name = "Intervalo do inventário", Range = {15,180}, Increment = 5, Suffix = " s", CurrentValue = S.intervaloInv, Flag = "DexFarmInventoryInterval", Callback = function(v) S.intervaloInv = math.floor(v + 0.5) end })
+InventoryTab:CreateSection("Automação")
+InventoryTab:CreateToggle({ Name = "Equipar automaticamente os melhores", CurrentValue = S.autoEquipar, Flag = "DexFarmAutoEquip", Callback = function(v) S.autoEquipar = v end })
+InventoryTab:CreateToggle({ Name = "Remover repetidos automaticamente", CurrentValue = S.autoLimpar, Flag = "DexFarmAutoClean", Callback = function(v) S.autoLimpar = v end })
+InventoryTab:CreateToggle({ Name = "Vender itens de baixa raridade", CurrentValue = S.autoVenderAte, Flag = "DexFarmAutoSell", Callback = function(v) S.autoVenderAte = v end })
+InventoryTab:CreateToggle({ Name = "Evoluir equipamentos automaticamente", CurrentValue = S.autoEvoluir, Flag = "DexFarmAutoEvolve", Callback = function(v) S.autoEvoluir = v end })
+InventoryTab:CreateToggle({ Name = "Fabricar apenas melhorias", CurrentValue = S.autoCraftMelhores, Flag = "DexFarmAutoCraftUpgrades", Callback = function(v) S.autoCraftMelhores = v end })
+InventoryTab:CreateSlider({ Name = "Intervalo entre verificações", Range = {15,180}, Increment = 5, Suffix = " s", CurrentValue = S.intervaloInv, Flag = "DexFarmInventoryInterval", Callback = function(v) S.intervaloInv = math.floor(v + 0.5) end })
 InventoryTab:CreateDropdown({
-    Name = "Vender até a raridade", Options = {"Só Básicos","Até Raros","Até Épicos"}, CurrentOption = {"Até Raros"},
+    Name = "Raridade máxima para venda", Options = {"Só Básicos","Até Raros","Até Épicos"}, CurrentOption = {"Até Raros"},
     MultipleOptions = false, Flag = "DexFarmSellRarity",
     Callback = function(options)
         local nome = type(options) == "table" and options[1] or options
@@ -406,13 +416,13 @@ StatEquip = makeLabelProxy(InventoryTab:CreateLabel("Equipamentos trocados: 0", 
 local areasList = {}
 for _, area in ipairs(Biomas) do if area.id ~= "Torre" then table.insert(areasList, area.nome) end end
 PortalTab:CreateDropdown({
-    Name = "Destino", Options = areasList, CurrentOption = {Biomas[1].nome}, MultipleOptions = false, Flag = "DexFarmPortalDestination",
+    Name = "Área de destino", Options = areasList, CurrentOption = {Biomas[1].nome}, MultipleOptions = false, Flag = "DexFarmPortalDestination",
     Callback = function(options)
         local nome = type(options) == "table" and options[1] or options
         for _, area in ipairs(Biomas) do if area.nome == nome and area.id ~= "Torre" then S.portalAreaAtual = area.id; break end end
     end,
 })
-PortalTab:CreateToggle({ Name = "Auto entrar no portal", CurrentValue = S.portalAutoViajar, Flag = "DexFarmPortalAutoEnter", Callback = function(v) S.portalAutoViajar = v end })
+PortalTab:CreateToggle({ Name = "Viajar automaticamente ao iniciar o farm", CurrentValue = S.portalAutoViajar, Flag = "DexFarmPortalAutoEnter", Callback = function(v) S.portalAutoViajar = v end })
 PortalTab:CreateButton({
     Name = "Viajar para a área selecionada", Icon = "navigation",
     Callback = function()
@@ -439,7 +449,7 @@ local function alternarFarmTorre()
     SLab4.Text = "Torre Infinita · aguardando servidor"
 end
 
-TowerTab:CreateSection("Torre Infinita")
+TowerTab:CreateSection("Automação da Torre Infinita")
 TowerTab:CreateToggle({ Name = "Auto entrar", CurrentValue = S.torreAutoEntrar, Flag = "DexFarmTowerAutoEnter", Callback = function(v) S.torreAutoEntrar = v end })
 TowerTab:CreateToggle({ Name = "Auto avançar andar", CurrentValue = S.torreAutoAdvance, Flag = "DexFarmTowerAutoAdvance", Callback = function(v) S.torreAutoAdvance = v end })
 TowerTab:CreateToggle({ Name = "Auto reviver", CurrentValue = S.torreAutoReviver, Flag = "DexFarmTowerAutoRevive", Callback = function(v) S.torreAutoReviver = v end })
@@ -455,17 +465,12 @@ SLab2 = makeLabelProxy(MainTab:CreateLabel("Abates: 0 · Núcleos: 0", "swords")
 SLab3 = makeLabelProxy(MainTab:CreateLabel("Alvo: nenhum", "target"), "Alvo: nenhum")
 SLab4 = makeLabelProxy(MainTab:CreateLabel("Aguardando início", "info"), "Aguardando início")
 
--- Acesso rápido para a Torre na primeira aba, para não depender da navegação
--- horizontal das abas em telas pequenas.
-MainTab:CreateSection("Torre Infinita")
-MainTab:CreateLabel("Inicie ou pare o modo Torre diretamente daqui.", "castle")
 MainTab:CreateButton({
-    Name = "Iniciar / parar farm da Torre",
-    Icon = "castle",
-    Description = "Ativa o modo Torre sem iniciar o farm de bioma.",
-    Callback = alternarFarmTorre,
+    Name = "Parar todas as automações",
+    Icon = "square",
+    Description = "Desliga o farm e encerra o script.",
+    Callback = encerrarScript,
 })
-MainTab:CreateButton({ Name = "Parar todas as automações", Icon = "square", Callback = encerrarScript })
 SettingsTab:CreateParagraph({
     Title = "SUMMON FARM v6.0",
     Content = "Interface Rayfield Gen 3 Concept. As automações de farm, coleta, portais, Torre e inventário mantêm seus estados separados.",
