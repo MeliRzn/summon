@@ -358,6 +358,19 @@ PortalTab:CreateButton({
     end,
 })
 
+local function alternarFarmTorre()
+    if S.torreFarmAtivo then
+        S.torreFarmAtivo, S.torreAtivo = false, false
+        atualizarEstadoFarm()
+        setStatus("Farm da Torre desativado", C.dim)
+        return
+    end
+    S.farmBiomaAtivo, S.biomaId, S.torreAtivo, S.torreFarmAtivo = false, "Torre", false, true
+    atualizarEstadoFarm()
+    setStatus("Modo Torre · procurando entrada", C.purple)
+    SLab4.Text = "Torre Infinita · aguardando servidor"
+end
+
 TowerTab:CreateSection("Torre Infinita")
 TowerTab:CreateToggle({ Name = "Auto entrar", CurrentValue = S.torreAutoEntrar, Flag = "DexFarmTowerAutoEnter", Callback = function(v) S.torreAutoEntrar = v end })
 TowerTab:CreateToggle({ Name = "Auto avançar andar", CurrentValue = S.torreAutoAdvance, Flag = "DexFarmTowerAutoAdvance", Callback = function(v) S.torreAutoAdvance = v end })
@@ -365,18 +378,7 @@ TowerTab:CreateToggle({ Name = "Auto reviver", CurrentValue = S.torreAutoReviver
 TowerTab:CreateButton({
     Name = "Alternar farm da Torre", Icon = "castle",
     Description = "Ativa ou para o modo Torre sem iniciar o farm normal.",
-    Callback = function()
-        if S.torreFarmAtivo then
-            S.torreFarmAtivo, S.torreAtivo = false, false
-            atualizarEstadoFarm()
-            setStatus("Farm da Torre desativado", C.dim)
-            return
-        end
-        S.farmBiomaAtivo, S.biomaId, S.torreAtivo, S.torreFarmAtivo = false, "Torre", false, true
-        atualizarEstadoFarm()
-        setStatus("Modo Torre · procurando entrada", C.purple)
-        SLab4.Text = "Torre Infinita · aguardando servidor"
-    end,
+    Callback = alternarFarmTorre,
 })
 
 MainTab:CreateSection("Estado do farm")
@@ -384,6 +386,17 @@ SLab = makeLabelProxy(MainTab:CreateLabel("Inativo", "activity"), "Inativo")
 SLab2 = makeLabelProxy(MainTab:CreateLabel("Abates: 0 · Núcleos: 0", "swords"), "Abates: 0 · Núcleos: 0")
 SLab3 = makeLabelProxy(MainTab:CreateLabel("Alvo: nenhum", "target"), "Alvo: nenhum")
 SLab4 = makeLabelProxy(MainTab:CreateLabel("Aguardando início", "info"), "Aguardando início")
+
+-- Acesso rápido para a Torre na primeira aba, para não depender da navegação
+-- horizontal das abas em telas pequenas.
+MainTab:CreateSection("Torre Infinita")
+MainTab:CreateLabel("Inicie ou pare o modo Torre diretamente daqui.", "castle")
+MainTab:CreateButton({
+    Name = "Iniciar / parar farm da Torre",
+    Icon = "castle",
+    Description = "Ativa o modo Torre sem iniciar o farm de bioma.",
+    Callback = alternarFarmTorre,
+})
 MainTab:CreateButton({ Name = "Parar todas as automações", Icon = "square", Callback = encerrarScript })
 SettingsTab:CreateParagraph({
     Title = "DEX FARM v6.0",
