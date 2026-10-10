@@ -1,15 +1,26 @@
 -- ============================================================
--- DEX FARM v6.0 — Rayfield Gen 3 + lógica de farm preservada
+-- SUMMON FARM v6.1 — Rayfield Gen 3 + execução com limites de espera
 -- ============================================================
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LP = Players.LocalPlayer
-local Golpear = ReplicatedStorage:WaitForChild("Golpear")
-local Atacar = ReplicatedStorage:WaitForChild("Atacar")
-local DadosArmas = require(ReplicatedStorage:WaitForChild("DadosArmas"))
-local DadosMonstros = require(ReplicatedStorage:WaitForChild("DadosMonstros"))
+
+-- Dependências obrigatórias têm limite de espera: o script falha com mensagem clara
+-- em vez de ficar indefinidamente preso no carregamento.
+local function obterDependencia(nome, timeout)
+    local obj = ReplicatedStorage:WaitForChild(nome, timeout or 10)
+    if not obj then
+        error("[SUMMON FARM] Dependência obrigatória não encontrada: " .. nome, 2)
+    end
+    return obj
+end
+
+local Golpear = obterDependencia("Golpear")
+local Atacar = obterDependencia("Atacar")
+local DadosArmas = require(obterDependencia("DadosArmas"))
+local DadosMonstros = require(obterDependencia("DadosMonstros"))
 
 local C = {
     text    = Color3.fromRGB(240, 240, 245),
@@ -78,10 +89,10 @@ local Rayfield = loadstring(game:HttpGet(
 ))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "DEX FARM",
+    Name = "SUMMON FARM",
     Subtitle = "Farm por bioma · Torre Infinita",
     Icon = "swords",
-    LoadingTitle = "DEX FARM",
+    LoadingTitle = "SUMMON FARM",
     LoadingSubtitle = "Preparando automações",
     ToggleUIKeybind = "K",
     ConfigurationSaving = { Enabled = true, FolderName = "DexFarm", FileName = "Config" },
@@ -399,13 +410,13 @@ MainTab:CreateButton({
 })
 MainTab:CreateButton({ Name = "Parar todas as automações", Icon = "square", Callback = encerrarScript })
 SettingsTab:CreateParagraph({
-    Title = "DEX FARM v6.0",
+    Title = "SUMMON FARM v6.0",
     Content = "Interface Rayfield Gen 3 Concept. As automações de farm, coleta, portais, Torre e inventário mantêm seus estados separados.",
 })
 SettingsTab:CreateButton({ Name = "Encerrar script e restaurar velocidade", Icon = "power", Callback = encerrarScript })
 
 Rayfield:LoadConfiguration()
-Rayfield:Notify({ Title = "DEX FARM", Content = "Interface Gen 3 carregada.", Duration = 5, Image = "swords" })
+Rayfield:Notify({ Title = "SUMMON FARM", Content = "Interface Gen 3 carregada.", Duration = 5, Image = "swords" })
 
 -- ============================================================
 -- FUNÇÕES DE JOGO
@@ -1091,6 +1102,10 @@ local function acharMonstroTorre()
 end
 
 -- Loop da Torre: o combate reutiliza as funções já existentes.
+-- Evita caminhar indefinidamente para coordenadas de fallback quando a entrada
+-- real não existe ou não foi carregada no mapa.
+local torreBuscaSemEntradaDesde = 0
+
 task.spawn(function()
     while scriptAlive do
         task.wait(0.12)
@@ -1151,14 +1166,27 @@ task.spawn(function()
                 local ch = getChar()
                 local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
 
-                -- O centro da zona vem de DadosAreas.Lista.Torre.Centro.
-                -- Se não existir ProximityPrompt no mapa, usa as coordenadas conhecidas.
                 if not pos then
-                    pos = Vector3.new(0, 0, 5000)
-                    if hrp then
-                        distanciaTorre = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - pos).Magnitude
+                    if torreBuscaSemEntradaDesde == 0 then
+                        torreBuscaSemEntradaDesde = os.clock()
                     end
+                    local tempoBusca = os.clock() - torreBuscaSemEntradaDesde
+                    if tempoBusca >= 30 then
+                        S.torreFarmAtivo = false
+                        S.torreAtivo = false
+                        atualizarEstadoFarm()
+                        torreBuscaSemEntradaDesde = 0
+                        setStatus("Entrada da Torre não encontrada; farm pausado", C.red)
+                        SLab4.Text = "A entrada não apareceu em 30s. Tente novamente quando estiver carregada."
+                        task.wait(1)
+                    else
+                        setStatus("Procurando entrada da Torre...", C.orange)
+                        SLab4.Text = "Entrada não localizada · " .. math.floor(tempoBusca) .. "/30s"
+                        task.wait(1)
+                    end
+                    continue
                 end
+                torreBuscaSemEntradaDesde = 0
 
                 if hrp and pos and distanciaTorre and distanciaTorre > 10 then
                     setStatus("Indo até a Torre Infinita...", C.orange)
@@ -1259,7 +1287,7 @@ if CraftingEvento and CraftingEvento:IsA("RemoteEvent") then
                 if not ok then
                     S.craftEmCurso = false
                     SLab4.Text = "Falha ao solicitar craft"
-                    warn("[DexFarm] Falha no craft: " .. tostring(err))
+                    warn("[SUMMON FARM] Falha no craft: " .. tostring(err))
                 else
                     task.delay(20, function()
                         if S.craftEmCurso then
@@ -1465,4 +1493,4 @@ task.spawn(function()
     end
 end)
 
-print("[DexFarm v6.0] Carregado com Rayfield Gen 3!")
+print("[SUMMON FARM v6.1] Carregado com Rayfield Gen 3!")
