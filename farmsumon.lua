@@ -304,6 +304,11 @@ FarmTab:CreateDropdown({
         if modo == "Andar" or modo == "Teleporte adaptativo" then
             S.modoMovimento = modo
             S.tpAtivo = modo == "Teleporte adaptativo"
+            if S.tpAtivo then
+                S.tpFalhasSeguidas = 0
+                S.tpIntervalo = math.clamp(S.tpIntervalo, 0.08, 1)
+                S.tpMaxDist = math.clamp(S.tpMaxDist, 50, 300)
+            end
             setStatus("Locomoção: " .. modo, C.blue)
         end
     end,
@@ -544,7 +549,7 @@ end
 
 local function moverPara(destino, timeout)
     if typeof(destino) ~= "Vector3" then return false end
-    if S.modoMovimento ~= "Teleporte adaptativo" or not S.tpAtivo then
+    if S.modoMovimento ~= "Teleporte adaptativo" or not S.tpAtivo or S.tpFalhasSeguidas >= 3 then
         return andarAte(destino, timeout or 4)
     end
 
@@ -596,10 +601,8 @@ local function moverPara(destino, timeout)
             S.tpIntervalo = math.min(S.tpIntervalo * 1.5, 1)
             S.tpMaxDist = math.max(S.tpMaxDist * 0.7, 50)
             if S.tpFalhasSeguidas >= 3 then
-                S.tpAtivo = false
-                S.modoMovimento = "Andar"
-                setStatus("Teleporte falhou repetidamente; voltando a Andar", C.orange)
-                SLab4.Text = "Teleporte pausado após 3 falhas. Selecione-o novamente para tentar."
+                setStatus("Teleporte pausado; usando caminhada", C.orange)
+                SLab4.Text = "Teleporte pausado após 3 falhas. Selecione Andar e depois Teleporte para tentar novamente."
             else
                 SLab4.Text = string.format("Teleporte não confirmado (%d); reduzindo o passo", S.tpReverts)
             end
