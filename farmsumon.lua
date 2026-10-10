@@ -4,9 +4,6 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 
 local LP = Players.LocalPlayer
 local Golpear = ReplicatedStorage:WaitForChild("Golpear")
@@ -15,10 +12,6 @@ local DadosArmas = require(ReplicatedStorage:WaitForChild("DadosArmas"))
 local DadosMonstros = require(ReplicatedStorage:WaitForChild("DadosMonstros"))
 
 local C = {
-    bg      = Color3.fromRGB(20, 20, 24),
-    card    = Color3.fromRGB(30, 30, 36),
-    card2   = Color3.fromRGB(42, 42, 50),
-    stroke  = Color3.fromRGB(58, 58, 66),
     text    = Color3.fromRGB(240, 240, 245),
     dim     = Color3.fromRGB(142, 142, 152),
     blue    = Color3.fromRGB(10, 132, 255),
@@ -28,9 +21,6 @@ local C = {
     gold    = Color3.fromRGB(255, 214, 90),
     purple  = Color3.fromRGB(175, 82, 222),
 }
-local F  = Enum.Font.Gotham
-local FB = Enum.Font.GothamBold
-local FM = Enum.Font.GothamMedium
 
 local S = {
     ativo = false, -- calculado pelos modos individuais
@@ -119,6 +109,24 @@ local function encerrarScript()
         if hum then hum.WalkSpeed = walkOriginal end
     end
     pcall(function() Rayfield:Destroy() end)
+end
+
+-- Se o usuário descarregar a UI pelo menu nativo do Rayfield, encerra também
+-- os loops de automação e restaura a velocidade original.
+local destroyRayfield = Rayfield.Destroy
+function Rayfield:Destroy()
+    if scriptAlive then
+        scriptAlive = false
+        S.ativo = false
+        S.farmBiomaAtivo = false
+        S.torreFarmAtivo = false
+        S.torreAtivo = false
+        S.portalEmCurso = false
+        local ch = LP.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = walkOriginal end
+    end
+    return destroyRayfield(self)
 end
 
 -- ============================================================
@@ -317,7 +325,9 @@ local makeLabelProxy = function(handle, initialText)
         __index = function(_, key) return values[key] end,
         __newindex = function(_, key, value)
             values[key] = value
-            if key == "Text" and handle then pcall(function() handle:Set(tostring(value or "")) end) end
+            if handle and (key == "Text" or key == "TextColor3") then
+                pcall(function() handle:Set(tostring(values.Text or ""), nil, values.TextColor3) end)
+            end
         end,
     })
 end
